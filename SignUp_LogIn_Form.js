@@ -1893,7 +1893,6 @@ class ShopApp {
   }
 
   saveProducts() {
-    localStorage.setItem('jjv_products', JSON.stringify(this.products));
     if (window.supabaseClient) {
       const cleanRecords = this.products.map(p => ({
         id: String(p.id),
@@ -1908,10 +1907,12 @@ class ShopApp {
         .upsert(cleanRecords, { onConflict: 'id' })
         .then(({ data, error }) => {
           if (!error) {
-            console.log('✅ [Supabase] Products synced to PostgreSQL table!');
+            console.log('✅ [Supabase] Products successfully synced to PostgreSQL table!');
+          } else {
+            console.error('Error syncing products to Supabase:', error);
           }
         })
-        .catch(() => {});
+        .catch((err) => console.error('Supabase network error:', err));
     }
   }
 
@@ -2117,24 +2118,46 @@ class ShopApp {
     const urlInput = document.getElementById('p-image-url')?.value.trim();
     const fileInput = document.getElementById('p-image-file')?.files[0];
 
-    const createAndSaveProduct = (imageUrl) => {
-      const newProduct = {
+    const createAndSaveProduct = async (imageUrl) => {
+      const productRecord = {
         id: "p_" + Date.now(),
-        name,
-        category,
-        price,
+        name: name,
+        category: category,
+        price: price,
         image: imageUrl || "https://images.unsplash.com/photo-1560343090-f0409e92791a?auto=format&fit=crop&w=600&q=80",
-        description
+        description: description
       };
 
       if (customDiscountInput !== '') {
-        newProduct.discount = Math.max(0, Math.min(100, parseFloat(customDiscountInput) || 0));
+        productRecord.discount = Math.max(0, Math.min(100, parseFloat(customDiscountInput) || 0));
       }
 
-      this.products.unshift(newProduct);
-      this.saveProducts();
+      // Direct Supabase insert call to the database (replaces localStorage)
+      let savedProduct = productRecord;
+      if (window.supabaseClient) {
+        const { data, error } = await window.supabaseClient
+          .from('products')
+          .insert([productRecord])
+          .select();
+
+        if (error) {
+          console.error("Error saving product to database:", error);
+          this.showToast(`Error saving product to database: ${error.message}`, 'error');
+          return;
+        }
+
+        if (data && data.length > 0) {
+          savedProduct = data[0];
+          console.log("Product successfully stored in Supabase:", savedProduct);
+        }
+      }
+
+      // Update in-memory state and refresh UI directly from database row
+      this.products.unshift(savedProduct);
       this.renderOwnerInventory();
       this.renderProducts();
+
+      // Clear the form inputs
       if (this.addProductForm) this.addProductForm.reset();
       
       const radUrl = document.querySelector('input[name="img-source"][value="url"]');
@@ -2142,8 +2165,7 @@ class ShopApp {
       if (this.urlInputContainer) this.urlInputContainer.classList.remove('hidden');
       if (this.fileInputContainer) this.fileInputContainer.classList.add('hidden');
 
-      this.showToast(`Product "${name}" added with ${this.getProductDiscount(newProduct)}% discount!`, 'success');
-      
+      this.showToast(`🎉 Product "${name}" added directly to database!`, 'success');
       document.querySelector('.console-tab-btn[data-tab="tab-manage"]')?.click();
     };
 
