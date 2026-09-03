@@ -136,6 +136,7 @@ class ShopApp {
     this.initDayTheme();
     this.bindEvents();
     this.renderAll();
+    this.loadProductsFromSupabase();
   }
 
   initDayTheme() {
@@ -1893,6 +1894,38 @@ class ShopApp {
 
   saveProducts() {
     localStorage.setItem('jjv_products', JSON.stringify(this.products));
+    if (window.supabaseClient) {
+      const cleanRecords = this.products.map(p => ({
+        id: String(p.id),
+        name: p.name,
+        category: p.category,
+        price: parseFloat(p.price) || 0,
+        image: p.image || '',
+        description: p.description || ''
+      }));
+      window.supabaseClient
+        .from('products')
+        .upsert(cleanRecords, { onConflict: 'id' })
+        .then(({ data, error }) => {
+          if (!error) {
+            console.log('✅ [Supabase] Products synced to PostgreSQL table!');
+          }
+        })
+        .catch(() => {});
+    }
+  }
+
+  async loadProductsFromSupabase() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient.from('products').select('*');
+      if (!error && data && data.length > 0) {
+        this.products = data;
+        this.renderProducts();
+        this.renderOwnerInventory();
+        console.log(`✅ [Supabase] Loaded ${data.length} products from PostgreSQL database!`);
+      }
+    } catch (err) {}
   }
 
   renderCart() {
