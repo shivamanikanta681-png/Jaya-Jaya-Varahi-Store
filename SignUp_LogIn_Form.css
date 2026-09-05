@@ -713,29 +713,57 @@ body {
 .header-search-cart-group {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .catalog-cart-btn {
   background: linear-gradient(135deg, var(--primary-color, #0284c7) 0%, var(--primary-hover, #0369a1) 100%);
   color: #ffffff;
   border: none;
-  padding: 10px 18px;
-  border-radius: 12px;
+  width: auto;
+  min-width: 62px;
+  padding: 0 14px;
+  height: 42px;
+  border-radius: 21px;
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 6px;
   box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
 }
 
 .catalog-cart-btn:hover {
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1.05);
   box-shadow: 0 6px 18px rgba(2, 132, 199, 0.45);
+}
+
+.catalog-cart-btn i {
+  font-size: 24px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.catalog-cart-btn:hover i {
+  transform: scale(1.18);
+}
+
+.catalog-cart-btn .badge {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  margin-left: 2px;
+  line-height: 1.2;
 }
 
 .search-box {
@@ -2944,22 +2972,51 @@ form {
   background: var(--primary-color, #7494ec);
   color: #ffffff;
   border: none;
-  padding: 10px 18px;
-  border-radius: 12px;
+  width: auto;
+  min-width: 62px;
+  padding: 0 14px;
+  height: 42px;
+  border-radius: 21px;
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 6px;
   box-shadow: 0 4px 12px rgba(116, 148, 236, 0.35);
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
 }
 
 .catalog-cart-btn:hover {
   background: var(--primary-hover, #4f70e0);
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1.05);
   box-shadow: 0 6px 18px rgba(116, 148, 236, 0.5);
+}
+
+.catalog-cart-btn i {
+  font-size: 24px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.catalog-cart-btn:hover i {
+  transform: scale(1.18);
+}
+
+.catalog-cart-btn .badge {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  margin-left: 2px;
+  line-height: 1.2;
 }
 
 /* Customer Checkout Modal */
@@ -3886,22 +3943,51 @@ form {
   background: #f43f5e;
   color: #ffffff;
   border: none;
-  padding: 10px 18px;
-  border-radius: 12px;
+  width: auto;
+  min-width: 62px;
+  padding: 0 14px;
+  height: 42px;
+  border-radius: 21px;
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 6px;
   box-shadow: 0 4px 12px rgba(244, 63, 94, 0.35);
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
 }
 
 .catalog-wishlist-btn:hover {
   background: #e11d48;
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1.05);
   box-shadow: 0 6px 18px rgba(244, 63, 94, 0.5);
+}
+
+.catalog-wishlist-btn i {
+  font-size: 24px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.catalog-wishlist-btn:hover i {
+  transform: scale(1.18);
+}
+
+.catalog-wishlist-btn .badge {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  margin-left: 2px;
+  line-height: 1.2;
 }
 
 .wishlist-heart-btn {

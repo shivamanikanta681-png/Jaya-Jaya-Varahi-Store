@@ -1150,7 +1150,7 @@ class ShopApp {
     if (this.offerTextDisplay) {
       const isDefaultGeneric = !this.specialOfferText || this.specialOfferText.includes('🎉 Mega Sale!');
       const bannerText = isDefaultGeneric ? `✨ "${todayTheme.quote}"` : this.specialOfferText;
-      this.offerTextDisplay.innerHTML = `${escapeHTML(bannerText)} (<span id="banner-discount-tag">${this.dayDiscount}% OFF</span>)`;
+      this.offerTextDisplay.innerHTML = `${escapeHTML(bannerText)} <span id="banner-discount-tag">${this.dayDiscount}% OFF</span>`;
     }
   }
 
@@ -3468,7 +3468,7 @@ class ShopApp {
     const KB = {
       en: {
         welcome: "Hello! Welcome to Jaya Jaya Varahi Shop! How can I assist you with Toys, Return Gifts, Induction Cookware, or Express Delivery today?",
-        how_to_order: "🛒 <strong>How to Order in 3 Easy Steps:</strong><br>1. Browse products and click <strong>'Add to Cart'</strong>.<br>2. Open your Cart using the <strong>Cart Items</strong> button in the search bar.<br>3. Click <strong>'Proceed to Checkout'</strong>, select Hyderabad or Outside Hyd, fill your address, and click <strong>'Place & Confirm Order'</strong>!",
+        how_to_order: "🛒 <strong>How to Order in 3 Easy Steps:</strong><br>1. Browse products and click <strong>'Add to Cart'</strong>.<br>2. Open your Cart using the <strong>Cart</strong> icon in the search bar.<br>3. Click <strong>'Proceed to Checkout'</strong>, select Hyderabad or Outside Hyd, fill your address, and click <strong>'Place & Confirm Order'</strong>!",
         payment: "💳 <strong>Payment Options:</strong><br>We accept <strong>UPI (Google Pay, PhonePe, Paytm, BHIM)</strong>, Debit/Credit Cards, Net Banking, Cash on Delivery (COD), and direct WhatsApp confirmation.<br><br>🔒 <em>All transactions are 100% encrypted & secure.</em>",
         hyd_delivery: "🚀 <strong>Hyderabad Fast Delivery:</strong><br>For Hyderabad customers, we dispatch via <strong>Rapido Bike & Uber Connect</strong> packages!<br>• <strong>Speed:</strong> Delivered to your doorstep within <strong>1 to 3 hours</strong>!<br>• <strong>Tracking:</strong> Live delivery driver contact provided upon dispatch.",
         outside_delivery: "🚚 <strong>All-India Courier Delivery:</strong><br>For outside Hyderabad, we ship via trusted express partners (DTDC, Blue Dart, Express Courier).<br>• <strong>Transit Time:</strong> 2 to 4 business days.<br>• <strong>Safe Packaging:</strong> Multi-layer protective bubble wrap & rigid carton.",
