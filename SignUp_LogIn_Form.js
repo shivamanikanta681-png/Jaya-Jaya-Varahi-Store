@@ -212,7 +212,7 @@ class ShopApp {
 
     this.initElements();
     this.initDayTheme();
-    this.initDailyQuotesShowcase();
+    this.initAdminQuotePresets();
     this.bindEvents();
     this.renderAll();
     this.loadProductsFromFirebase();
@@ -225,27 +225,7 @@ class ShopApp {
     return DAY_THEMES[todayIndex] || DAY_THEMES[1];
   }
 
-  initDailyQuotesShowcase() {
-    const showcase = document.getElementById('daily-quotation-showcase');
-    if (!showcase) return;
-
-    this.selectedQuoteDay = new Date().getDay();
-    this.renderDailyQuoteShowcase(this.selectedQuoteDay);
-
-    const chipsNav = document.getElementById('daily-chips-nav');
-    if (chipsNav) {
-      chipsNav.addEventListener('click', (e) => {
-        const chip = e.target.closest('.quote-day-chip');
-        if (!chip) return;
-        const day = parseInt(chip.dataset.day, 10);
-        if (!isNaN(day)) {
-          this.selectedQuoteDay = day;
-          this.renderDailyQuoteShowcase(day);
-        }
-      });
-    }
-
-    // Admin preset quick buttons
+  initAdminQuotePresets() {
     const adminPresets = document.querySelectorAll('.admin-preset-btn');
     adminPresets.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -263,46 +243,6 @@ class ShopApp {
         }
         this.showToast('Quotation loaded into banner field! Click "Save" below to apply.', 'info');
       });
-    });
-  }
-
-  renderDailyQuoteShowcase(dayIndex) {
-    const quoteData = DAY_THEMES[dayIndex] || this.getTodaySpecialQuote();
-    const todayDay = new Date().getDay();
-    const isToday = dayIndex === todayDay;
-
-    const iconEl = document.getElementById('spotlight-day-icon');
-    const themeEl = document.getElementById('spotlight-day-theme');
-    const quoteTextEl = document.getElementById('spotlight-quote-text');
-    const badgeEl = document.getElementById('spotlight-quote-badge');
-    const discountEl = document.getElementById('spotlight-discount-val');
-    const livePill = document.querySelector('.spotlight-live-pill');
-
-    if (iconEl) iconEl.className = `bx ${quoteData.icon}`;
-    if (themeEl) themeEl.textContent = quoteData.theme;
-    if (quoteTextEl) {
-      quoteTextEl.style.opacity = '0';
-      quoteTextEl.textContent = `"${quoteData.quote}"`;
-      setTimeout(() => { quoteTextEl.style.opacity = '1'; }, 80);
-    }
-    if (badgeEl) badgeEl.textContent = `✨ ${quoteData.badge}`;
-    if (discountEl) discountEl.textContent = `${this.dayDiscount}% OFF`;
-
-    if (livePill) {
-      if (isToday) {
-        livePill.innerHTML = `<i class='bx bxs-circle' style="color:#22c55e; font-size:9px;"></i> Today's Special`;
-        livePill.className = 'spotlight-live-pill active-today';
-      } else {
-        livePill.innerHTML = `<i class='bx bx-time' style="font-size:12px;"></i> ${quoteData.dayName} Feature`;
-        livePill.className = 'spotlight-live-pill preview-day';
-      }
-    }
-
-    const chips = document.querySelectorAll('.quote-day-chip');
-    chips.forEach(chip => {
-      const chipDay = parseInt(chip.dataset.day, 10);
-      chip.classList.toggle('active', chipDay === dayIndex);
-      chip.classList.toggle('is-today', chipDay === todayDay);
     });
   }
 
@@ -1211,10 +1151,6 @@ class ShopApp {
       const isDefaultGeneric = !this.specialOfferText || this.specialOfferText.includes('🎉 Mega Sale!');
       const bannerText = isDefaultGeneric ? `✨ "${todayTheme.quote}"` : this.specialOfferText;
       this.offerTextDisplay.innerHTML = `${escapeHTML(bannerText)} (<span id="banner-discount-tag">${this.dayDiscount}% OFF</span>)`;
-    }
-
-    if (typeof this.renderDailyQuoteShowcase === 'function') {
-      this.renderDailyQuoteShowcase(this.selectedQuoteDay !== undefined ? this.selectedQuoteDay : todayIndex);
     }
   }
 
