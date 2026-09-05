@@ -108,14 +108,86 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DAY_THEMES = {
-  0: { name: "Sunday Sunshine Fest", dayName: "Sunday", icon: "bx-sun", primary: "#f59e0b", primaryHover: "#d97706", gradient: "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)", pillBg: "rgba(245, 158, 11, 0.25)" },
-  1: { name: "Monday Sapphire Vibe", dayName: "Monday", icon: "bx-diamond", primary: "#0284c7", primaryHover: "#0369a1", gradient: "linear-gradient(135deg, #0284c7 0%, #6366f1 100%)", pillBg: "rgba(2, 132, 199, 0.25)" },
-  2: { name: "Tuesday Emerald Magic", dayName: "Tuesday", icon: "bx-leaf", primary: "#10b981", primaryHover: "#059669", gradient: "linear-gradient(135deg, #10b981 0%, #0d9488 100%)", pillBg: "rgba(16, 185, 129, 0.25)" },
-  3: { name: "Wednesday Royal Purple", dayName: "Wednesday", icon: "bx-crown", primary: "#8b5cf6", primaryHover: "#7c3aed", gradient: "linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)", pillBg: "rgba(139, 92, 246, 0.25)" },
-  4: { name: "Thursday Golden Rose", dayName: "Thursday", icon: "bx-heart", primary: "#f43f5e", primaryHover: "#e11d48", gradient: "linear-gradient(135deg, #f43f5e 0%, #fb923c 100%)", pillBg: "rgba(244, 63, 94, 0.25)" },
-  5: { name: "Friday Sparkling Sapphire", dayName: "Friday", icon: "bx-sparkles", primary: "#6366f1", primaryHover: "#4f46e5", gradient: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", pillBg: "rgba(99, 102, 241, 0.25)" },
-  6: { name: "Saturday Sunset Gold", dayName: "Saturday", icon: "bx-party", primary: "#ea580c", primaryHover: "#c2410c", gradient: "linear-gradient(135deg, #ea580c 0%, #eab308 100%)", pillBg: "rgba(234, 88, 12, 0.25)" }
+  0: { 
+    dayName: "Sunday", 
+    theme: "Sunday Serenity", 
+    quote: "Wrap up your week with cozy comforts and peaceful moments at home.", 
+    badge: "Cozy Comforts & Peace", 
+    icon: "bx-heart", 
+    primary: "#0d9488", 
+    primaryHover: "#0f766e", 
+    gradient: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)", 
+    pillBg: "rgba(13, 148, 136, 0.25)" 
+  },
+  1: { 
+    dayName: "Monday", 
+    theme: "Monday Motivation", 
+    quote: "Start the week with a spark—fresh finds and new beginnings await!", 
+    badge: "Fresh Finds & Spark", 
+    icon: "bx-rocket", 
+    primary: "#0284c7", 
+    primaryHover: "#0369a1", 
+    gradient: "linear-gradient(135deg, #0284c7 0%, #6366f1 100%)", 
+    pillBg: "rgba(2, 132, 199, 0.25)" 
+  },
+  2: { 
+    dayName: "Tuesday", 
+    theme: "Tuesday Treasure", 
+    quote: "Uncover little joys and timeless treasures crafted just for you.", 
+    badge: "Timeless Treasures", 
+    icon: "bx-diamond", 
+    primary: "#8b5cf6", 
+    primaryHover: "#7c3aed", 
+    gradient: "linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%)", 
+    pillBg: "rgba(139, 92, 246, 0.25)" 
+  },
+  3: { 
+    dayName: "Wednesday", 
+    theme: "Wednesday Wonder", 
+    quote: "Midweek magic is real—explore handcrafted wonders that brighten your day.", 
+    badge: "Handcrafted Wonders", 
+    icon: "bx-magic-wand", 
+    primary: "#2563eb", 
+    primaryHover: "#1d4ed8", 
+    gradient: "linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)", 
+    pillBg: "rgba(37, 99, 235, 0.25)" 
+  },
+  4: { 
+    dayName: "Thursday", 
+    theme: "Thursday Thrills", 
+    quote: "The weekend is almost here; treat yourself to something wonderful!", 
+    badge: "Pre-Weekend Treat", 
+    icon: "bx-party", 
+    primary: "#059669", 
+    primaryHover: "#047857", 
+    gradient: "linear-gradient(135deg, #059669 0%, #10b981 100%)", 
+    pillBg: "rgba(5, 150, 105, 0.25)" 
+  },
+  5: { 
+    dayName: "Friday", 
+    theme: "Friday Festive", 
+    quote: "Feel the festive vibe and step into the weekend with a smile.", 
+    badge: "Festive Vibes & Smiles", 
+    icon: "bx-sparkles", 
+    primary: "#e11d48", 
+    primaryHover: "#be123c", 
+    gradient: "linear-gradient(135deg, #e11d48 0%, #f43f5e 100%)", 
+    pillBg: "rgba(225, 29, 72, 0.25)" 
+  },
+  6: { 
+    dayName: "Saturday", 
+    theme: "Saturday Sunset Gold", 
+    quote: "Where golden hours meet golden prices. Soak in the weekend warmth!", 
+    badge: "Golden Hours & Warmth", 
+    icon: "bx-sun", 
+    primary: "#d97706", 
+    primaryHover: "#b45309", 
+    gradient: "linear-gradient(135deg, #d97706 0%, #f59e0b 100%)", 
+    pillBg: "rgba(217, 119, 6, 0.25)" 
+  }
 };
+
+const DAILY_SPECIAL_QUOTES = DAY_THEMES;
 
 class ShopApp {
   constructor() {
@@ -140,11 +212,98 @@ class ShopApp {
 
     this.initElements();
     this.initDayTheme();
+    this.initDailyQuotesShowcase();
     this.bindEvents();
     this.renderAll();
     this.loadProductsFromFirebase();
     this.loadStoreSettingsFromSupabase();
     this.loadCategoriesFromSupabase();
+  }
+
+  getTodaySpecialQuote() {
+    const todayIndex = new Date().getDay();
+    return DAY_THEMES[todayIndex] || DAY_THEMES[1];
+  }
+
+  initDailyQuotesShowcase() {
+    const showcase = document.getElementById('daily-quotation-showcase');
+    if (!showcase) return;
+
+    this.selectedQuoteDay = new Date().getDay();
+    this.renderDailyQuoteShowcase(this.selectedQuoteDay);
+
+    const chipsNav = document.getElementById('daily-chips-nav');
+    if (chipsNav) {
+      chipsNav.addEventListener('click', (e) => {
+        const chip = e.target.closest('.quote-day-chip');
+        if (!chip) return;
+        const day = parseInt(chip.dataset.day, 10);
+        if (!isNaN(day)) {
+          this.selectedQuoteDay = day;
+          this.renderDailyQuoteShowcase(day);
+        }
+      });
+    }
+
+    // Admin preset quick buttons
+    const adminPresets = document.querySelectorAll('.admin-preset-btn');
+    adminPresets.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const bannerInput = document.getElementById('p-offer-banner-text');
+        if (!bannerInput) return;
+        if (btn.id === 'btn-set-today-quote') {
+          const tQuote = this.getTodaySpecialQuote();
+          bannerInput.value = `✨ "${tQuote.quote}"`;
+        } else {
+          const day = parseInt(btn.dataset.day, 10);
+          const q = DAY_THEMES[day];
+          if (q) {
+            bannerInput.value = `✨ "${q.quote}"`;
+          }
+        }
+        this.showToast('Quotation loaded into banner field! Click "Save" below to apply.', 'info');
+      });
+    });
+  }
+
+  renderDailyQuoteShowcase(dayIndex) {
+    const quoteData = DAY_THEMES[dayIndex] || this.getTodaySpecialQuote();
+    const todayDay = new Date().getDay();
+    const isToday = dayIndex === todayDay;
+
+    const iconEl = document.getElementById('spotlight-day-icon');
+    const themeEl = document.getElementById('spotlight-day-theme');
+    const quoteTextEl = document.getElementById('spotlight-quote-text');
+    const badgeEl = document.getElementById('spotlight-quote-badge');
+    const discountEl = document.getElementById('spotlight-discount-val');
+    const livePill = document.querySelector('.spotlight-live-pill');
+
+    if (iconEl) iconEl.className = `bx ${quoteData.icon}`;
+    if (themeEl) themeEl.textContent = quoteData.theme;
+    if (quoteTextEl) {
+      quoteTextEl.style.opacity = '0';
+      quoteTextEl.textContent = `"${quoteData.quote}"`;
+      setTimeout(() => { quoteTextEl.style.opacity = '1'; }, 80);
+    }
+    if (badgeEl) badgeEl.textContent = `✨ ${quoteData.badge}`;
+    if (discountEl) discountEl.textContent = `${this.dayDiscount}% OFF`;
+
+    if (livePill) {
+      if (isToday) {
+        livePill.innerHTML = `<i class='bx bxs-circle' style="color:#22c55e; font-size:9px;"></i> Today's Special`;
+        livePill.className = 'spotlight-live-pill active-today';
+      } else {
+        livePill.innerHTML = `<i class='bx bx-time' style="font-size:12px;"></i> ${quoteData.dayName} Feature`;
+        livePill.className = 'spotlight-live-pill preview-day';
+      }
+    }
+
+    const chips = document.querySelectorAll('.quote-day-chip');
+    chips.forEach(chip => {
+      const chipDay = parseInt(chip.dataset.day, 10);
+      chip.classList.toggle('active', chipDay === dayIndex);
+      chip.classList.toggle('is-today', chipDay === todayDay);
+    });
   }
 
   initDayTheme() {
@@ -161,8 +320,9 @@ class ShopApp {
 
     const dayPill = document.getElementById('day-theme-pill');
     if (dayPill) {
-      dayPill.innerHTML = `<i class='bx ${theme.icon} day-icon-spin'></i> <span>Happy ${theme.dayName}! ${escapeHTML(theme.name)}</span>`;
+      dayPill.innerHTML = `<i class='bx ${theme.icon} day-icon-spin'></i> <span>${escapeHTML(theme.theme)}</span>`;
       dayPill.style.background = theme.pillBg;
+      dayPill.setAttribute('title', `${theme.theme}: "${theme.quote}"`);
     }
 
     this.highlightTodayTiming(dayIndex);
@@ -1033,9 +1193,28 @@ class ShopApp {
   }
 
   updateOfferBanner() {
+    const todayIndex = new Date().getDay();
+    const todayTheme = DAY_THEMES[todayIndex] || DAY_THEMES[1];
+
+    const dayNameDisplay = document.getElementById('day-name-display');
+    const dayThemePill = document.getElementById('day-theme-pill');
+    if (dayNameDisplay) dayNameDisplay.textContent = todayTheme.theme;
+    if (dayThemePill) {
+      dayThemePill.setAttribute('title', `${todayTheme.theme}: "${todayTheme.quote}"`);
+      const icon = dayThemePill.querySelector('i');
+      if (icon) icon.className = `bx ${todayTheme.icon} day-icon-spin`;
+    }
+
     if (this.bannerDiscountTag) this.bannerDiscountTag.textContent = `${this.dayDiscount}% OFF`;
+
     if (this.offerTextDisplay) {
-      this.offerTextDisplay.innerHTML = `${escapeHTML(this.specialOfferText)} (<span id="banner-discount-tag">${this.dayDiscount}% OFF</span>)`;
+      const isDefaultGeneric = !this.specialOfferText || this.specialOfferText.includes('🎉 Mega Sale!');
+      const bannerText = isDefaultGeneric ? `✨ "${todayTheme.quote}"` : this.specialOfferText;
+      this.offerTextDisplay.innerHTML = `${escapeHTML(bannerText)} (<span id="banner-discount-tag">${this.dayDiscount}% OFF</span>)`;
+    }
+
+    if (typeof this.renderDailyQuoteShowcase === 'function') {
+      this.renderDailyQuoteShowcase(this.selectedQuoteDay !== undefined ? this.selectedQuoteDay : todayIndex);
     }
   }
 
