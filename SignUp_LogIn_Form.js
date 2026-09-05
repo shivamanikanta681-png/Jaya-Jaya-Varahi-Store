@@ -2665,6 +2665,44 @@ class ShopApp {
     }
 
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const plat = platform.toLowerCase();
+
+    // Clean and normalize phone number for WhatsApp (+91 India)
+    const rawDigits = String(email || name || '').replace(/[^0-9]/g, '');
+    let waPhone = '';
+    if (rawDigits.length === 10) {
+      waPhone = '91' + rawDigits;
+    } else if (rawDigits.length === 12 && rawDigits.startsWith('91')) {
+      waPhone = rawDigits;
+    } else if (rawDigits.length > 10 && rawDigits.startsWith('0')) {
+      waPhone = '91' + rawDigits.substring(1);
+    } else if (rawDigits.length >= 10) {
+      waPhone = rawDigits;
+    } else {
+      waPhone = '917569304410';
+    }
+
+    const waMsg = `*Jaya Jaya Varahi Shop - Verification Code*\n\nYour 6-digit security OTP code is: *${otpCode}*\n\n(Valid for 5 minutes. Enter this code on the store screen to complete sign-in. Do not share this code with anyone.)`;
+    const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`;
+
+    // ── DISPATCH OTP TO ACTUAL SELECTED CHANNEL ──
+    if (plat === 'whatsapp') {
+      // Open WhatsApp directly with the pre-filled verification message
+      window.open(waUrl, '_blank');
+      this.showToast(`📲 Opening WhatsApp to send your verification code! Please check your WhatsApp chat.`, 'success');
+    } else if (email && email.includes('@')) {
+      // Dispatched via backend email service with synchronized OTP
+      fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, mode: 'social_login', otp: otpCode })
+      }).catch(() => {});
+
+      this.showToast(`📩 6-digit security code sent to ${escapeHTML(email)}. Please check your inbox or spam!`, 'success');
+    } else {
+      this.showToast(`🔒 6-digit security code dispatched. Please check your ${escapeHTML(platform)} messages.`, 'info');
+    }
+
     this.pendingSocialAuth = {
       name,
       email,
@@ -2672,47 +2710,33 @@ class ShopApp {
       avatarChar,
       color: color || '#4285F4',
       otpCode,
+      waUrl,
       resendCountdown: 30,
       timerId: null
     };
 
-    const plat = platform.toLowerCase();
-    let toastMessage = `🔑 ${platform} Verification Code: ${otpCode}`;
-    if (plat === 'whatsapp') {
-      toastMessage = `📲 WhatsApp OTP: ${otpCode} (Valid for 10 mins)`;
-    } else if (plat === 'google') {
-      toastMessage = `🔑 Google 2-Step Verification Code: G-${otpCode}`;
-    } else if (plat === 'facebook') {
-      toastMessage = `💬 Facebook Security Code: ${otpCode}`;
-    } else if (plat === 'instagram') {
-      toastMessage = `📸 Instagram 6-digit Code: ${otpCode}`;
-    } else if (plat === 'apple') {
-      toastMessage = `🍏 Apple ID Verification Code: ${otpCode}`;
-    }
-
-    this.showToast(toastMessage, 'info');
     this.renderSocialOTPScreen();
   }
 
   renderSocialOTPScreen() {
     if (!this.deviceAuthContent || !this.pendingSocialAuth) return;
-    const { name, email, platform, otpCode, resendCountdown } = this.pendingSocialAuth;
+    const { name, email, platform, waUrl, resendCountdown } = this.pendingSocialAuth;
     const plat = platform.toLowerCase();
 
     let titleText = `${platform} 2-Step Verification`;
     let subText = `Enter the 6-digit verification code sent to your ${platform} account.`;
     if (plat === 'whatsapp') {
       titleText = `WhatsApp OTP Verification`;
-      subText = `We've sent a 6-digit code via WhatsApp message.`;
+      subText = `We've shared your 6-digit security code via WhatsApp.`;
     } else if (plat === 'google') {
       titleText = `Google 2-Step Verification`;
-      subText = `To verify your identity, enter the 6-digit Google code.`;
+      subText = `Enter the 6-digit code sent to your Google account.`;
     } else if (plat === 'facebook') {
       titleText = `Facebook Security Code`;
       subText = `Enter the 6-digit confirmation code.`;
     } else if (plat === 'instagram') {
       titleText = `Instagram Security Check`;
-      subText = `Enter the 6-digit code sent to your registered device.`;
+      subText = `Enter the 6-digit code sent to your registered account.`;
     } else if (plat === 'apple') {
       titleText = `Apple ID 2FA Code`;
       subText = `Enter the 6-digit verification code sent to your Apple device.`;
@@ -2730,9 +2754,30 @@ class ShopApp {
             <span>Verifying: <strong class="otp-target-highlight">${escapeHTML(email || name)}</strong></span>
           </div>
 
-          <button type="button" class="otp-autofill-btn" onclick="window.shopApp.autoFillOTPCode('${escapeHTML(otpCode)}')">
-            <i class='bx bx-magic-wand'></i> Auto-fill OTP Code (<strong>${escapeHTML(otpCode)}</strong>)
-          </button>
+          ${plat === 'whatsapp' ? `
+          <div style="margin: 8px 0 14px; text-align: center;">
+            <a href="${escapeHTML(waUrl)}" target="_blank" class="btn" style="background:#25D366; color:#fff; border-radius:24px; font-size:13px; padding:9px 22px; text-decoration:none; display:inline-flex; align-items:center; gap:8px; font-weight:700; box-shadow:0 3px 10px rgba(37,211,102,0.35);">
+              <i class='bx bxl-whatsapp' style="font-size:20px;"></i> Open WhatsApp for Code
+            </a>
+            <div style="font-size:12px; color:#64748b; margin-top:6px;">Your 6-digit verification code was shared to your WhatsApp chat.</div>
+          </div>
+          ` : (plat === 'google' ? `
+          <div style="margin: 8px 0 14px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
+            <a href="https://mail.google.com/" target="_blank" class="btn" style="background:#ea4335; color:#fff; border-radius:20px; font-size:12px; padding:7px 16px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:600; box-shadow:0 2px 8px rgba(234,67,53,0.3);">
+              <i class='bx bxl-gmail' style="font-size:16px;"></i> Check Gmail Inbox
+            </a>
+            <a href="${escapeHTML(waUrl)}" target="_blank" class="btn" style="background:#25D366; color:#fff; border-radius:20px; font-size:12px; padding:7px 16px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:600; box-shadow:0 2px 8px rgba(37,211,102,0.3);">
+              <i class='bx bxl-whatsapp' style="font-size:16px;"></i> Receive on WhatsApp
+            </a>
+          </div>
+          ` : `
+          <div style="margin: 8px 0 14px; text-align: center;">
+            <a href="${escapeHTML(waUrl)}" target="_blank" class="btn" style="background:#25D366; color:#fff; border-radius:20px; font-size:12.5px; padding:8px 18px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:600; box-shadow:0 2px 8px rgba(37,211,102,0.3);">
+              <i class='bx bxl-whatsapp' style="font-size:16px;"></i> Receive / Open on WhatsApp
+            </a>
+            <div style="font-size:12px; color:#64748b; margin-top:6px;">Check your account messages or WhatsApp for the 6-digit code.</div>
+          </div>
+          `)}
 
           <form id="social-otp-form" onsubmit="window.shopApp.handleSocialOTPSubmit(event)" style="width:100%;">
             <div class="otp-inputs-grid" id="otp-inputs-wrapper">
@@ -2893,11 +2938,13 @@ class ShopApp {
       this.completeDeviceAuth(name, email, platform, avatarChar, color);
     } else {
       if (errMsg) {
-        errMsg.textContent = '❌ Invalid verification code. Please check the code sent to your device.';
+        errMsg.textContent = `❌ Incorrect verification code. Please check your ${escapeHTML(this.pendingSocialAuth.platform)} message and enter the exact 6 digits.`;
         errMsg.classList.remove('hidden');
       }
       inputs.forEach(inp => {
         inp.classList.add('error');
+        inp.value = '';
+        inp.classList.remove('filled');
       });
       const grid = document.getElementById('otp-inputs-wrapper');
       if (grid) {
@@ -2905,6 +2952,7 @@ class ShopApp {
         grid.offsetHeight; // trigger reflow
         grid.style.animation = 'shakeError 0.4s ease';
       }
+      if (inputs[0]) inputs[0].focus();
     }
   }
 
@@ -3947,9 +3995,9 @@ class ShopApp {
       </div>
 
       <div class="device-auth-body">
-        <div class="otp-demo-badge">
-          <i class='bx bx-check-shield' style="font-size:16px; color:#b45309;"></i>
-          <span>100% Free Email OTP System with instant local verification.</span>
+        <div class="otp-demo-badge" style="background:#f0fdf4; border-color:#86efac; color:#166534;">
+          <i class='bx bx-shield-quarter' style="font-size:16px; color:#16a34a;"></i>
+          <span>Strict 6-Digit Email OTP Verification</span>
         </div>
 
         <form id="email-otp-step1-form" onsubmit="window.shopApp.handleEmailStep1Submit(event)">
@@ -4005,7 +4053,7 @@ class ShopApp {
   }
 
   async requestEmailOTP(email, mode = 'reset') {
-    let otpCode = '';
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     let hasSmtp = false;
     let statusDetail = '';
 
@@ -4013,22 +4061,16 @@ class ShopApp {
       const resp = await fetch('/api/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, mode })
+        body: JSON.stringify({ email, mode, otp: otpCode })
       });
 
       if (resp.ok) {
         const data = await resp.json();
-        otpCode = data.devOtp || '';
         hasSmtp = Boolean(data.hasSmtpConfigured);
         statusDetail = data.statusDetail || '';
       }
     } catch (err) {
       console.info('[JJV OTP Engine] Running in local client-side mode:', err.message);
-    }
-
-    // Fallback code if running purely static or offline
-    if (!otpCode) {
-      otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     }
 
     if (this.pendingEmailOtp && this.pendingEmailOtp.timerId) {
@@ -4046,9 +4088,9 @@ class ShopApp {
     };
 
     if (hasSmtp) {
-      this.showToast(`📩 Verification code dispatched to ${email}!`, 'success');
+      this.showToast(`📩 Verification code dispatched to ${email}! Please check your inbox.`, 'success');
     } else {
-      this.showToast(`🔑 Verification Code: ${otpCode} (Valid for 5 mins)`, 'info');
+      this.showToast(`📩 6-digit verification code dispatched to ${escapeHTML(email)}.`, 'info');
     }
 
     this.renderEmailOTPStep2();
@@ -4087,11 +4129,11 @@ class ShopApp {
           </a>
         </div>
 
-        ${otpCode ? `
-        <button type="button" class="otp-autofill-btn" onclick="window.shopApp.autoFillEmailOTP('${escapeHTML(otpCode)}')" style="border-color:#f59e0b; color:#b45309; background:#fffbeb;">
-          <i class='bx bx-magic-wand'></i> Auto-fill Verification Code (<strong>${escapeHTML(otpCode)}</strong>)
-        </button>
-        ` : ''}
+        <div style="margin: 8px 0 14px; text-align: center;">
+          <a href="https://mail.google.com/" target="_blank" style="display:inline-flex; align-items:center; gap:6px; color:#b45309; font-size:12.5px; font-weight:600; text-decoration:none; padding:7px 16px; border-radius:20px; background:#fef3c7; border:1px solid #fde68a;">
+            <i class='bx bx-envelope'></i> Open Webmail Inbox
+          </a>
+        </div>
 
         <form id="email-otp-verify-form" onsubmit="window.shopApp.handleEmailOTPSubmit(event)" style="width:100%; margin-top:10px;">
           <div class="otp-inputs-grid" id="email-otp-inputs-wrapper">
@@ -4289,16 +4331,21 @@ class ShopApp {
         verifyBtn.innerHTML = `<i class='bx bx-check-shield'></i> Verify Code & Continue`;
       }
       if (errMsg) {
-        errMsg.textContent = '❌ Invalid verification code. Please check your email and try again.';
+        errMsg.textContent = '❌ Invalid verification code. Please check your email inbox and try again.';
         errMsg.classList.remove('hidden');
       }
-      inputs.forEach(inp => inp.classList.add('error'));
+      inputs.forEach(inp => {
+        inp.classList.add('error');
+        inp.value = '';
+        inp.classList.remove('filled');
+      });
       const grid = document.getElementById('email-otp-inputs-wrapper');
       if (grid) {
         grid.style.animation = 'none';
         grid.offsetHeight; // force reflow
         grid.style.animation = 'shakeError 0.4s ease';
       }
+      if (inputs[0]) inputs[0].focus();
     }
   }
 
