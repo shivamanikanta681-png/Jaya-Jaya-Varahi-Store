@@ -18,6 +18,7 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from pathlib import Path
+from rag_engine import get_rag_pipeline, OrderRetriever
 
 PORT = 8000
 DIRECTORY = Path(__file__).resolve().parent
@@ -156,6 +157,17 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(DIRECTORY), **kwargs)
 
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
+
+    def end_headers(self):
+        if hasattr(self, 'path') and any(self.path.split('?')[0].endswith(ext) for ext in ('.html', '.js', '.css', '.webp')):
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
+        super().end_headers()
+
     def _set_cors_headers(self, status=200, content_type="application/json"):
         self.send_response(status)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -166,6 +178,19 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self._set_cors_headers(200)
+
+    def do_GET(self):
+        if self.path == "/api/rag/knowledge":
+            rag = get_rag_pipeline()
+            self._set_cors_headers(200)
+            self.wfile.write(json.dumps({
+                "success": True,
+                "chunks_count": len(rag.kb.chunks),
+                "store_info": rag.kb.store_info,
+                "categories": list(set(c.get("category") for c in rag.kb.chunks))
+            }).encode("utf-8"))
+            return
+        return super().do_GET()
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
@@ -329,9 +354,62 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             }).encode("utf-8"))
             return
 
+        # ── ROUTE 6: RAG CUSTOMER SUPPORT CHATBOT ──
+        elif self.path == "/api/chat/rag":
+            message = payload.get("message", "").strip()
+            language = payload.get("language", "en")
+            phone = payload.get("customerPhone")
+            order_id = payload.get("orderId")
+            day_discount = float(payload.get("dayDiscount", 15.0))
+            client_orders = payload.get("orders", [])
+
+            try:
+                rag = get_rag_pipeline()
+                response = rag.answer_query(
+                    message=message,
+                    language=language,
+                    customer_phone=phone,
+                    order_id=order_id,
+                    day_discount=day_discount,
+                    client_orders=client_orders
+                )
+                self._set_cors_headers(200)
+                self.wfile.write(json.dumps(response).encode("utf-8"))
+            except Exception as e:
+                self._set_cors_headers(500)
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": str(e),
+                    "answer": "I apologize, our customer support engine encountered a temporary glitch. Please contact our team directly at +91 75693 04410 on WhatsApp."
+                }).encode("utf-8"))
+            return
+
+        # ── ROUTE 7: RAG ORDER STATUS LOOKUP ──
+        elif self.path == "/api/rag/track-order":
+            order_id = payload.get("orderId")
+            phone = payload.get("phone")
+            client_orders = payload.get("orders", [])
+            order = OrderRetriever.lookup_order(order_id=order_id, phone=phone, client_orders=client_orders)
+            self._set_cors_headers(200)
+            self.wfile.write(json.dumps({
+                "success": True if order else False,
+                "order": order
+            }).encode("utf-8"))
+            return
+
         # Fallback 404 for unknown API
         self._set_cors_headers(404)
         self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode("utf-8"))
+
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def handle_error(self, request, client_address):
+        ex_type, _, _ = sys.exc_info()
+        if ex_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            return
+        super().handle_error(request, client_address)
 
 import sys
 
@@ -340,14 +418,14 @@ def run_server():
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", PORT), ShopRequestHandler) as httpd:
+    with ThreadedTCPServer(("", PORT), ShopRequestHandler) as httpd:
         print("\n=======================================================")
-        print(">> Jaya Jaya Varahi Shop Server with Email OTP is LIVE")
+        print(">> Jaya Jaya Varahi Shop Server & RAG Engine is LIVE (Multi-Threaded)")
         print("=======================================================")
-        print(f">> Local Web Server : http://localhost:{PORT}")
-        print(f">> Email OTP Route  : http://localhost:{PORT}/api/send-otp")
-        print(f">> SMTP Configured  : {'YES (' + SMTP_EMAIL + ')' if SMTP_EMAIL and SMTP_PASSWORD else 'NO (running in visual test & auto-fill mode)'}")
+        print(f">> Local Web Server   : http://localhost:{PORT}")
+        print(f">> RAG Chat Endpoint  : http://localhost:{PORT}/api/chat/rag")
+        print(f">> Email OTP Route    : http://localhost:{PORT}/api/send-otp")
+        print(f">> SMTP Configured    : {'YES (' + SMTP_EMAIL + ')' if SMTP_EMAIL and SMTP_PASSWORD else 'NO (running in visual test & auto-fill mode)'}")
         print("=======================================================\n")
         try:
             httpd.serve_forever()

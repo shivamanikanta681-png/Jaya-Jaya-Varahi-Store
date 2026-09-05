@@ -21,3 +21,6 @@ $RECYCLE.BIN/
 # Logs
 *.log
 npm-debug.log*
+
+# Firebase CLI cache
+.firebase/

@@ -30,7 +30,7 @@ const DEFAULT_PRODUCTS = [
     name: "Wooden Racing Toy Car",
     category: "toys",
     price: 450,
-    image: "images/toy_car.jpg",
+    image: "images/toy_car.webp",
     description: "Handcrafted non-toxic wooden racing car with smooth rolling wheels for kids."
   },
   {
@@ -54,7 +54,7 @@ const DEFAULT_PRODUCTS = [
     name: "Traditional Brass Diya Gift Set",
     category: "return_gifts",
     price: 599,
-    image: "images/return_gift.jpg",
+    image: "images/return_gift.webp",
     description: "Exquisite hand-carved pure brass oil diya set packaged in a velvet gift box."
   },
   {
@@ -78,7 +78,7 @@ const DEFAULT_PRODUCTS = [
     name: "Premium Stainless Steel Cookware Set",
     category: "kitchenware",
     price: 1499,
-    image: "images/kitchenware.jpg",
+    image: "images/kitchenware.webp",
     description: "3-piece induction bottom stainless steel pots & saucepans with glass lids."
   },
   {
@@ -121,6 +121,12 @@ class ShopApp {
   constructor() {
     window.shopApp = this;
     this.products = safeJSON('jjv_products', DEFAULT_PRODUCTS);
+    // Auto-migrate local cached images to optimized WebP
+    this.products.forEach(p => {
+      if (p.image && p.image.endsWith('.jpg') && p.image.startsWith('images/')) {
+        p.image = p.image.replace('.jpg', '.webp');
+      }
+    });
     this.categories = safeJSON('jjv_categories', DEFAULT_CATEGORIES);
     this.cart = safeJSON('jjv_cart', []);
     this.orders = safeJSON('jjv_orders', []);
@@ -136,7 +142,9 @@ class ShopApp {
     this.initDayTheme();
     this.bindEvents();
     this.renderAll();
-    this.loadProductsFromSupabase();
+    this.loadProductsFromFirebase();
+    this.loadStoreSettingsFromSupabase();
+    this.loadCategoriesFromSupabase();
   }
 
   initDayTheme() {
@@ -184,6 +192,12 @@ class ShopApp {
     this.searchInput = document.getElementById('search-input');
     this.productGrid = document.getElementById('product-grid');
     this.cartCountBadge = document.getElementById('cart-count');
+
+    // Slide-Out Store Menu Drawer
+    this.navbarMenuToggleBtn = document.getElementById('navbar-menu-toggle-btn');
+    this.navbarMenuDrawer = document.getElementById('navbar-menu-drawer');
+    this.navbarDrawerCloseBtn = document.getElementById('navbar-drawer-close-btn');
+    this.navbarDrawerBackdrop = document.getElementById('navbar-drawer-backdrop');
     
     // Store Sections
     this.catalogSection = document.getElementById('catalog-section');
@@ -384,6 +398,17 @@ class ShopApp {
       });
     }
 
+    // Store Menu Drawer Controls
+    if (this.navbarMenuToggleBtn) {
+      this.navbarMenuToggleBtn.addEventListener('click', () => this.openMenuDrawer());
+    }
+    if (this.navbarDrawerCloseBtn) {
+      this.navbarDrawerCloseBtn.addEventListener('click', () => this.closeMenuDrawer());
+    }
+    if (this.navbarDrawerBackdrop) {
+      this.navbarDrawerBackdrop.addEventListener('click', () => this.closeMenuDrawer());
+    }
+
     // 4. Wishlist Header Button Click
     if (this.wishlistBtn) {
       this.wishlistBtn.addEventListener('click', () => this.showWishlistSection());
@@ -406,7 +431,10 @@ class ShopApp {
 
     // 6. My Account Controls & Form
     if (this.openAccountBtn) {
-      this.openAccountBtn.addEventListener('click', () => this.openAccountModal());
+      this.openAccountBtn.addEventListener('click', () => {
+        this.closeMenuDrawer();
+        this.openAccountModal();
+      });
     }
 
     if (this.closeAccountModal) {
@@ -569,6 +597,7 @@ class ShopApp {
     if (this.openLoginBtn) {
       this.openLoginBtn.addEventListener('click', (e) => {
         if (e.target.closest('#header-logout-btn')) return;
+        this.closeMenuDrawer();
         if (this.currentUser && this.currentUser.name) {
           this.openAccountModal();
         } else {
@@ -683,6 +712,7 @@ class ShopApp {
     // 16. Owner Console Auth Trigger
     if (this.openOwnerBtn) {
       this.openOwnerBtn.addEventListener('click', () => {
+        this.closeMenuDrawer();
         if (this.ownerPasswordInput) this.ownerPasswordInput.value = '';
         if (this.authErrorMsg) this.authErrorMsg.classList.add('hidden');
         if (this.ownerAuthModal) this.ownerAuthModal.classList.remove('hidden');
@@ -730,6 +760,32 @@ class ShopApp {
       });
     }
 
+    // Firebase Sync Catalog to Cloud Firestore Button
+    const syncFirebaseBtn = document.getElementById('firebase-sync-catalog-btn');
+    if (syncFirebaseBtn) {
+      syncFirebaseBtn.addEventListener('click', async () => {
+        if (!window.firebaseProductService) {
+          this.showToast('Firebase SDK is not loaded yet.', 'error');
+          return;
+        }
+        if (!window.firebaseProductService.isConfigured()) {
+          this.showToast('⚠️ Please add your Firebase project config in firebaseClient.js first!', 'warning');
+          return;
+        }
+        syncFirebaseBtn.disabled = true;
+        syncFirebaseBtn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Syncing...`;
+        try {
+          const res = await window.firebaseProductService.seedCatalog(this.products);
+          this.showToast(`🔥 Successfully synced ${res.count} products to Cloud Firestore!`, 'success');
+        } catch (err) {
+          this.showToast(`Firebase Sync failed: ${err.message}`, 'error');
+        } finally {
+          syncFirebaseBtn.disabled = false;
+          syncFirebaseBtn.innerHTML = `<i class='bx bxl-firebase'></i> Sync Catalog to Firebase`;
+        }
+      });
+    }
+
     // Toggle Image URL vs Upload File
     if (this.imgSourceRadios) {
       this.imgSourceRadios.forEach(radio => {
@@ -764,6 +820,14 @@ class ShopApp {
         localStorage.setItem('jjv_day_discount', String(this.dayDiscount));
         localStorage.setItem('jjv_offer_text', this.specialOfferText);
 
+        // SYNC TO SUPABASE (Discounts & Offers stored in Supabase)
+        if (window.supabaseDataService) {
+          window.supabaseDataService.saveStoreSettings({
+            day_discount: this.dayDiscount,
+            special_offer_text: this.specialOfferText
+          });
+        }
+
         if (newPassInput) {
           this.ownerPassword = newPassInput;
           localStorage.setItem('jjv_owner_pass', this.ownerPassword);
@@ -792,6 +856,7 @@ class ShopApp {
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        this.closeMenuDrawer();
         if (this.loginModal) this.loginModal.classList.add('hidden');
         if (this.ownerAuthModal) this.ownerAuthModal.classList.add('hidden');
         if (this.ownerConsoleModal) this.ownerConsoleModal.classList.add('hidden');
@@ -977,16 +1042,7 @@ class ShopApp {
   renderNavTabs() {
     if (!this.navContainer) return;
 
-    let html = '';
-    if (this.categories.length > 3) {
-      html += `
-        <button type="button" class="nav-scroll-btn left" onclick="document.querySelector('.nav-links').scrollBy({left: -180, behavior: 'smooth'})" title="Scroll sections left">
-          <i class='bx bx-chevron-left'></i>
-        </button>
-      `;
-    }
-
-    html += this.categories.map(cat => {
+    const html = this.categories.map(cat => {
       const isActive = this.currentCategory === cat.id ? 'active' : '';
       return `
         <button class="nav-btn ${isActive}" data-category="${escapeHTML(cat.id)}">
@@ -994,14 +1050,6 @@ class ShopApp {
         </button>
       `;
     }).join('');
-
-    if (this.categories.length > 3) {
-      html += `
-        <button type="button" class="nav-scroll-btn right" onclick="document.querySelector('.nav-links').scrollBy({left: 180, behavior: 'smooth'})" title="Scroll sections right">
-          <i class='bx bx-chevron-right'></i>
-        </button>
-      `;
-    }
 
     this.navContainer.innerHTML = html;
 
@@ -1012,9 +1060,7 @@ class ShopApp {
         btn.classList.add('active');
         this.currentCategory = btn.dataset.category;
 
-        try {
-          btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        } catch (e) {}
+        this.closeMenuDrawer();
 
         if (this.productDetailSection) this.productDetailSection.classList.add('hidden');
         if (this.wishlistSection) this.wishlistSection.classList.add('hidden');
@@ -1132,6 +1178,45 @@ class ShopApp {
 
   saveCategories() {
     localStorage.setItem('jjv_categories', JSON.stringify(this.categories));
+    if (window.supabaseDataService) {
+      window.supabaseDataService.saveCategories(this.categories);
+    }
+  }
+
+  async loadCategoriesFromSupabase() {
+    if (!window.supabaseDataService) return;
+    try {
+      const data = await window.supabaseDataService.getCategories();
+      if (data && data.length > 0) {
+        this.categories = data;
+        localStorage.setItem('jjv_categories', JSON.stringify(this.categories));
+        this.renderNavTabs();
+        this.renderCategorySelect();
+        this.renderOwnerSections();
+        console.log(`✅ [Supabase] Loaded ${data.length} categories from Supabase!`);
+      }
+    } catch (e) {}
+  }
+
+  async loadStoreSettingsFromSupabase() {
+    if (!window.supabaseDataService) return;
+    try {
+      const settings = await window.supabaseDataService.getStoreSettings();
+      if (settings) {
+        if (typeof settings.day_discount !== 'undefined') {
+          this.dayDiscount = parseFloat(settings.day_discount) || this.dayDiscount;
+          localStorage.setItem('jjv_day_discount', String(this.dayDiscount));
+        }
+        if (settings.special_offer_text) {
+          this.specialOfferText = settings.special_offer_text;
+          localStorage.setItem('jjv_offer_text', this.specialOfferText);
+        }
+        this.updateOfferBanner();
+        this.renderProducts();
+        this.renderCart();
+        console.log(`✅ [Supabase] Loaded discounts (${this.dayDiscount}%) & offers from Supabase!`);
+      }
+    } catch (e) {}
   }
 
   renderAll() {
@@ -1334,6 +1419,9 @@ class ShopApp {
     }
 
     localStorage.setItem('jjv_wishlist', JSON.stringify(this.wishlist));
+    if (this.currentUser && this.currentUser.email && window.supabaseDataService) {
+      window.supabaseDataService.syncWishlist(this.currentUser.email, this.wishlist);
+    }
     this.updateWishlistBadge();
     this.renderProducts();
     this.renderWishlist();
@@ -1589,6 +1677,26 @@ class ShopApp {
     }
   }
 
+  openMenuDrawer() {
+    if (this.navbarMenuDrawer) {
+      this.navbarMenuDrawer.classList.add('drawer-open');
+    }
+    if (this.navbarDrawerBackdrop) {
+      this.navbarDrawerBackdrop.classList.remove('hidden');
+    }
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeMenuDrawer() {
+    if (this.navbarMenuDrawer) {
+      this.navbarMenuDrawer.classList.remove('drawer-open');
+    }
+    if (this.navbarDrawerBackdrop) {
+      this.navbarDrawerBackdrop.classList.add('hidden');
+    }
+    document.body.style.overflow = '';
+  }
+
   openAccountModal() {
     this.loadUserProfile();
     this.renderAccountUserBanner();
@@ -1793,6 +1901,38 @@ class ShopApp {
     localStorage.setItem('jjv_orders', JSON.stringify(this.orders));
     this.renderOwnerOrders();
 
+    // ── SYNC CUSTOMER ORDER TO SUPABASE (Strictly Customer Data) ──
+    if (window.supabaseClient) {
+      window.supabaseClient
+        .from('orders')
+        .insert([{
+          order_number: newOrder.id,
+          customer_name: name,
+          customer_phone: phone,
+          customer_email: this.currentUser ? this.currentUser.email : null,
+          delivery_location: isHyd ? 'Hyderabad' : 'Outside Hyderabad',
+          delivery_address: fullAddress,
+          items: newOrder.items,
+          subtotal: subtotal,
+          discount_amount: Math.max(0, subtotal - discountedTotal),
+          total_payable: discountedTotal,
+          status: "Pending Dispatch"
+        }])
+        .then(() => {
+          console.log(`✅ [Supabase] Customer order ${newOrder.id} stored in Supabase orders table!`);
+        })
+        .catch(err => console.warn('Supabase customer order sync note:', err));
+    }
+
+    // Also sync to backend Python API
+    try {
+      fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: newOrder })
+      }).catch(() => {});
+    } catch (e) {}
+
     // Format WhatsApp Order Message
     const waMessage = `*NEW ORDER CONFIRMATION - Jaya Jaya Varahi Shop*\n\n` +
       `*Order ID:* ${newOrder.id}\n` +
@@ -1893,40 +2033,34 @@ class ShopApp {
   }
 
   saveProducts() {
-    if (window.supabaseClient) {
-      const cleanRecords = this.products.map(p => ({
-        id: String(p.id),
-        name: p.name,
-        category: p.category,
-        price: parseFloat(p.price) || 0,
-        image: p.image || '',
-        description: p.description || ''
-      }));
-      window.supabaseClient
-        .from('products')
-        .upsert(cleanRecords, { onConflict: 'id' })
-        .then(({ data, error }) => {
-          if (!error) {
-            console.log('✅ [Supabase] Products successfully synced to PostgreSQL table!');
-          } else {
-            console.error('Error syncing products to Supabase:', error);
-          }
-        })
-        .catch((err) => console.error('Supabase network error:', err));
+    localStorage.setItem('jjv_products', JSON.stringify(this.products));
+    // Sync products to Firebase Cloud Firestore
+    if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
+      this.products.forEach(p => {
+        window.firebaseProductService.saveProduct(p);
+      });
     }
   }
 
-  async loadProductsFromSupabase() {
-    if (!window.supabaseClient) return;
+  async loadProductsFromFirebase() {
+    if (!window.firebaseProductService || !window.firebaseProductService.isConfigured()) {
+      console.log('ℹ️ [Firebase] Firestore client awaiting custom credentials in firebaseClient.js. Operating with resilient local catalog.');
+      return;
+    }
     try {
-      const { data, error } = await window.supabaseClient.from('products').select('*');
-      if (!error && data && data.length > 0) {
+      const data = await window.firebaseProductService.getProducts();
+      if (data && data.length > 0) {
         this.products = data;
+        localStorage.setItem('jjv_products', JSON.stringify(this.products));
         this.renderProducts();
         this.renderOwnerInventory();
-        console.log(`✅ [Supabase] Loaded ${data.length} products from PostgreSQL database!`);
+        console.log(`🔥 [Firebase] Loaded ${data.length} products from Cloud Firestore!`);
+      } else {
+        console.log('ℹ️ [Firebase] Firestore products collection is empty. Click "Sync Catalog to Firebase" in Owner Console to populate.');
       }
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Firebase Firestore loading note:', err);
+    }
   }
 
   renderCart() {
@@ -2089,6 +2223,11 @@ class ShopApp {
       this.cart = this.cart.filter(item => String(item.productId) !== String(productId));
       this.wishlist = this.wishlist.filter(id => String(id) !== String(productId));
 
+      // Delete directly from Firebase Cloud Firestore
+      if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
+        window.firebaseProductService.deleteProduct(productId);
+      }
+
       this.saveProducts();
       this.saveCart();
       localStorage.setItem('jjv_wishlist', JSON.stringify(this.wishlist));
@@ -2132,28 +2271,22 @@ class ShopApp {
         productRecord.discount = Math.max(0, Math.min(100, parseFloat(customDiscountInput) || 0));
       }
 
-      // Direct Supabase insert call to the database (replaces localStorage)
+      // Direct Firebase Cloud Firestore insert/upsert call (Products belong to Firebase)
       let savedProduct = productRecord;
-      if (window.supabaseClient) {
-        const { data, error } = await window.supabaseClient
-          .from('products')
-          .insert([productRecord])
-          .select();
-
-        if (error) {
-          console.error("Error saving product to database:", error);
-          this.showToast(`Error saving product to database: ${error.message}`, 'error');
-          return;
-        }
-
-        if (data && data.length > 0) {
-          savedProduct = data[0];
-          console.log("Product successfully stored in Supabase:", savedProduct);
+      if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
+        try {
+          const success = await window.firebaseProductService.saveProduct(productRecord);
+          if (success) {
+            console.log("🔥 [Firebase] Product successfully stored in Cloud Firestore:", savedProduct);
+          }
+        } catch (fbErr) {
+          console.error("🔥 Error saving product to Firebase Firestore:", fbErr);
         }
       }
 
-      // Update in-memory state and refresh UI directly from database row
+      // Update in-memory state and refresh UI
       this.products.unshift(savedProduct);
+      this.saveProducts();
       this.renderOwnerInventory();
       this.renderProducts();
 
@@ -2842,15 +2975,17 @@ class ShopApp {
     this.showToast('You have been signed out successfully.', 'info');
   }
 
-  // ── AI CHATBOT ASSISTANT RESPONSE ENGINE ──
+  // ── AI CHATBOT ASSISTANT RESPONSE ENGINE (RAG POWERED) ──
   initAIChatbot() {
     this.chatbotWindow = document.getElementById('chatbot-window');
     this.toggleChatbotBtn = document.getElementById('toggle-chatbot-btn');
     this.closeChatbotBtn = document.getElementById('close-chatbot-btn');
+    this.clearChatbotBtn = document.getElementById('clear-chatbot-btn');
     this.chatbotLangSelect = document.getElementById('chatbot-lang-select');
     this.chatbotMessages = document.getElementById('chatbot-messages');
     this.chatbotForm = document.getElementById('chatbot-form');
     this.chatbotInput = document.getElementById('chatbot-input');
+    this.quickPillsContainer = document.getElementById('chatbot-quick-pills');
 
     if (this.toggleChatbotBtn) {
       this.toggleChatbotBtn.onclick = (e) => {
@@ -2869,18 +3004,33 @@ class ShopApp {
       this.closeChatbotBtn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (this.chatbotWindow) {
-          this.chatbotWindow.classList.add('hidden');
-        }
+        this.closeChatbotAndBackHome();
+      };
+    }
+
+    // Pressing Escape closes chatbot and returns to home
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.chatbotWindow && !this.chatbotWindow.classList.contains('hidden')) {
+        this.closeChatbotAndBackHome();
+      }
+    });
+
+    if (this.clearChatbotBtn) {
+      this.clearChatbotBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.applyChatLanguage(this.chatLanguage || 'en');
+        this.showToast('Chat history refreshed', 'info');
       };
     }
 
     if (this.chatbotLangSelect) {
+      this.chatLanguage = this.chatbotLangSelect.value || 'en';
       this.chatbotLangSelect.onchange = (e) => {
         this.chatLanguage = e.target.value;
-        const welcomeText = this.getAIChatbotResponse('welcome', this.chatLanguage);
-        this.appendChatMessage(welcomeText, 'bot');
-        this.showToast(`AI Assistant language set to ${e.target.options[e.target.selectedIndex].text}`, 'info');
+        const langName = e.target.options[e.target.selectedIndex].text;
+        this.applyChatLanguage(this.chatLanguage);
+        this.showToast(`AI Assistant language set to ${langName}`, 'info');
       };
     }
 
@@ -2889,36 +3039,220 @@ class ShopApp {
         e.preventDefault();
         const text = this.chatbotInput ? this.chatbotInput.value.trim() : '';
         if (!text) return;
-
-        this.appendChatMessage(text, 'user');
         if (this.chatbotInput) this.chatbotInput.value = '';
-
-        this.showChatTypingIndicator();
-        setTimeout(() => {
-          this.removeChatTypingIndicator();
-          const response = this.getAIChatbotResponse(text, this.chatLanguage);
-          this.appendChatMessage(response, 'bot');
-        }, 400);
+        this.handleUserChatMessage(text);
       };
     }
 
     // Delegation for quick suggestion pills
     document.addEventListener('click', (e) => {
       const pill = e.target.closest('.quick-pill');
-      if (pill) {
+      if (pill && this.chatbotWindow && !this.chatbotWindow.classList.contains('hidden')) {
         e.preventDefault();
-        const queryKey = pill.dataset.query;
-        const labelText = pill.textContent || '';
-        this.appendChatMessage(labelText, 'user');
-
-        this.showChatTypingIndicator();
-        setTimeout(() => {
-          this.removeChatTypingIndicator();
-          const response = this.getAIChatbotResponse(queryKey, this.chatLanguage);
-          this.appendChatMessage(response, 'bot');
-        }, 350);
+        if (pill.dataset.action === 'back_home') {
+          this.closeChatbotAndBackHome();
+          return;
+        }
+        const queryText = pill.dataset.query || pill.textContent.trim();
+        this.handleUserChatMessage(queryText);
       }
     });
+  }
+
+  getChatbotLocale(lang) {
+    const code = (lang || this.chatLanguage || 'en').toLowerCase();
+    const map = {
+      en: {
+        placeholder: "Ask about toys, return gifts, delivery, or track order...",
+        welcome: "Namaste! 🙏 Welcome to <strong>Jaya Jaya Varahi Shop & Gifts</strong>! I am your RAG-powered AI Customer Support Assistant.<br><br>Ask me about our Handcrafted Toys, Pure Brass Return Gifts, Same-Day Hyderabad Delivery (1-3 hrs), or track your order with your Order ID or phone number!",
+        pills: ["Toys under ₹500", "Return Gifts", "Hyderabad Delivery", "Today's Offer", "Store Address"]
+      },
+      te: {
+        placeholder: "బొమ్మలు, గిఫ్ట్‌లు, డెలివరీ లేదా ఆర్డర్ గురించి అడగండి...",
+        welcome: "నమస్కారం! 🙏 <strong>జయ జయ వారాహి షాప్ & గిఫ్ట్స్</strong> కు స్వాగతం! నేను మీ AI కస్టమర్ సపోర్ట్ అసిస్టెంట్‌ని.<br><br>మా చేతితో చేసిన చెక్క బొమ్మలు, స్వచ్ఛమైన ఇత్తడి రిటర్న్ గిఫ్ట్‌లు, హైదరాబాద్ సేమ్-డే ఫాస్ట్ డెలివరీ (1-3 గంటలు) లేదా మీ ఆర్డర్ ట్రాకింగ్ గురించి నన్ను అడగండి!",
+        pills: ["₹500 లోపు బొమ్మలు", "రిటర్న్ గిఫ్ట్‌లు", "హైదరాబాద్ డెలివరీ", "నేటి ఆఫర్", "షాప్ అడ్రస్"]
+      },
+      hi: {
+        placeholder: "खिलौने, रिटर्न गिफ्ट्स, डिलीवरी या ऑर्डर के बारे में पूछें...",
+        welcome: "नमस्ते! 🙏 <strong>जय जय वाराही शॉप एंड गिफ्ट्स</strong> में आपका स्वागत है! मैं आपका AI कस्टमर सपोर्ट असिस्टेंट हूँ।<br><br>हमारे हस्तनिर्मित खिलौने, शुद्ध पीतल के रिटर्न गिफ्ट्स, हैदराबाद में 1-3 घंटे की फास्ट डिलीवरी, या अपने ऑर्डर की स्थिति के बारे में मुझसे पूछें!",
+        pills: ["₹500 के अंदर खिलौने", "रिटर्न गिफ्ट्स", "हैदराबाद डिलीवरी", "आज का ऑफर", "दुकान का पता"]
+      },
+      ta: {
+        placeholder: "பொம்மைகள், பரிசுகள், டெலிவரி பற்றி கேட்கவும்...",
+        welcome: "வணக்கம்! 🙏 <strong>ஜெய ஜெய வாராஹி ஷாப் & கிஃப்ட்ஸ்</strong>-க்கு நல்வரவு! நான் உங்கள் AI வாடிக்கையாளர் சேவை உதவியாளர்.<br><br>எங்கள் கைவினை மர பொம்மைகள், தூய பித்தளை ரிட்டர்ன் பரிசுகள், ஹைதராபாத் 1-3 மணி நேர துரித டெலிவரி அல்லது உங்கள் ஆர்டரை ட்ராக் செய்ய என்னிடம் கேளுங்கள்!",
+        pills: ["₹500 கீழ் பொம்மைகள்", "ரிட்டர்ன் பரிசுகள்", "ஹைதராபாத் டெலிவரி", "இன்றைய சலுகை", "கடை முகவரி"]
+      },
+      kn: {
+        placeholder: "ಆಟಿಕೆಗಳು, ಉಡುಗೊರೆಗಳು ಅಥವಾ ಡೆಲಿವರಿ ಬಗ್ಗೆ ಕೇಳಿ...",
+        welcome: "ನಮಸ್ಕಾರ! 🙏 <strong>ಜಯ ಜಯ ವಾರಾಹಿ ಶಾಪ್ & ಗಿಫ್ಟ್ಸ್</strong> ಗೆ ಸುಸ್ವಾಗತ! ನಾನು ನಿಮ್ಮ AI ಗ್ರಾಹಕ ಬೆಂಬಲ ಸಹಾಯಕ.<br><br>ನಮ್ಮ ಮರದ ಆಟಿಕೆಗಳು, ಶುದ್ಧ ಹಿತ್ತಾಳೆಯ ರಿಟರ್ನ್ ಗಿಫ್ಟ್ಸ್, ಹೈದರಾಬಾದ್ 1-3 ಗಂಟೆಗಳ ಎಕ್ಸ್‌ಪ್ರೆಸ್ ಡೆಲಿವರಿ ಅಥವಾ ನಿಮ್ಮ ಆರ್ಡರ್ ಟ್ರ್ಯಾಕಿಂಗ್ ಬಗ್ಗೆ ನನ್ನನ್ನು ಕೇಳಿ!",
+        pills: ["₹500 ಒಳಗೆ ಆಟಿಕೆಗಳು", "ರಿಟರ್ನ್ ಗಿಫ್ಟ್ಸ್", "ಹೈದರಾಬಾದ್ ಡೆಲಿವರಿ", "ಇಂದಿನ ಆಫರ್", "ವಿಳಾಸ"]
+      },
+      ml: {
+        placeholder: "കളിപ്പാട്ടങ്ങൾ, സമ്മാനങ്ങൾ, ഡെലിവറി എന്നിവയെക്കുറിച്ച് ചോദിക്കാം...",
+        welcome: "നമസ്കാരം! 🙏 <strong>ജയ ജയ വാരാഹി ഷോപ്പ് & ഗിഫ്റ്റ്‌സ്</strong> ലേക്ക് സ്വാഗതം! ഞാൻ നിങ്ങളുടെ AI കസ്റ്റമർ സപ്പോർട്ട് അസിസ്റ്റന്റ് ആണ്.<br><br>ഞങ്ങളുടെ മരക്കളിപ്പാട്ടങ്ങൾ, പിച്ചള റിട്ടേൺ സമ്മാനങ്ങൾ, ഹൈദരാബാദ് 1-3 മണിക്കൂർ ഫാസ്റ്റ് ഡെലിവറി അല്ലെങ്കിൽ ഓർഡർ ട്രാക്കിംഗ് എന്നിവയെക്കുറിച്ച് ചോദിക്കാം!",
+        pills: ["₹500 ന് താഴെ കളിപ്പാട്ടങ്ങൾ", "റിട്ടേൺ സമ്മാനങ്ങൾ", "ഹൈദരാബാദ് ഡെലിവറി", "ഇന്നത്തെ ഓഫർ", "കടയുടെ വിലാസം"]
+      },
+      mr: {
+        placeholder: "खेळणी, भेटवस्तू, डिलिव्हरी किंवा ऑर्डरबद्दल विचारा...",
+        welcome: "नमस्कार! 🙏 <strong>जय जय वाराही शॉप अँड गिफ्ट्स</strong> मध्ये आपले स्वागत आहे! मी आपला AI ग्राहक सेवा सहाय्यक आहे.<br><br>आमची लाकडी खेळणी, शुद्ध पितळेच्या भेटवस्तू, हैदराबाद 1-3 तासांची फास्ट डिलिव्हरी किंवा आपल्या ऑर्डरच्या स्थितीबद्दल मला विचारा!",
+        pills: ["₹500 च्या आत खेळणी", "रिटर्न गिफ्ट्स", "हैदराबाद डिलिव्हरी", "आजची ऑफर", "दुकान पत्ता"]
+      },
+      bn: {
+        placeholder: "খেলনা, উপহার, ডেলিভারি বা অর্ডার সম্পর্কে জিজ্ঞাসা করুন...",
+        welcome: "নমস্কার! 🙏 <strong>জয় জয় বারাহী শপ অ্যান্ড গিফ্টস</strong>-এ আপনাকে স্বাগতম! আমি আপনার AI কাস্টমার সাপোর্ট সহকারী।<br><br>আমাদের কাঠের খেলনা, খাঁটি পিতলের রিটার্ন গিফ্ট, হায়দ্রাবাদ ১-৩ ঘণ্টার দ্রুত ডেলিভারি বা অর্ডার ট্র্যাকিং সম্পর্কে আমাকে জিজ্ঞাসা করুন!",
+        pills: ["₹500 এর নিচে খেলনা", "রিটার্ন উপহার", "হায়দ্রাবাদ ডেলিভারি", "আজকের অফার", "দোকানের ঠিকানা"]
+      },
+      gu: {
+        placeholder: "રમકડાં, ભેટ, ડિલિવરી અથવા ઓર્ડર વિશે પૂછો...",
+        welcome: "નમસ્તે! 🙏 <strong>જય જય વારાહી શોપ એન્ડ ગિફ્ટ્સ</strong> માં આપનું સ્વાગત છે! હું તમારો AI ગ્રાહક સહાયક છું.<br><br>અમારા હાથથી બનાવેલા લાકડાના રમકડાં, શુદ્ધ પિત્તળની ભેટો, હૈદરાબાદ 1-3 કલાકની ફાસ્ટ ડિલિવરી અથવા ઓર્ડર ટ્રેકિંગ વિશે મને પૂછો!",
+        pills: ["₹500 હેઠળ રમકડાં", "રિટર્ન ગિફ્ટ્સ", "હૈદરાબાદ ડિલિવરી", "આજની ઑફર", "દુકાન સરનામું"]
+      },
+      or: {
+        placeholder: "ଖେଳଣା, ଉପହାର, ଡେଲିଭରି କିମ୍ବା ଅର୍ଡର ବିଷୟରେ ପଚାରନ୍ତୁ...",
+        welcome: "ନମସ୍କାର! 🙏 <strong>ଜୟ ଜୟ ବାରାହୀ ଶପ୍ ଆଣ୍ଡ ଗିଫ୍ଟସ୍</strong> କୁ ସ୍ଵାଗତ! ମୁଁ ଆପଣଙ୍କ AI ଗ୍ରାହକ ସେବା ସହାୟକ।<br><br>ଆମର କାଠ ଖେଳଣା, ପିତ୍ତଳ ରିଟର୍ଣ୍ଣ ଉପହାର, ହାଇଦ୍ରାବାଦ ୧-୩ ଘଣ୍ଟା ଏକ୍ସପ୍ରେସ୍ ଡେଲିଭରି କିମ୍ବା ଅର୍ଡର ଟ୍ରାକିଂ ବିଷୟରେ ପଚାରନ୍ତୁ!",
+        pills: ["₹500 ତଳେ ଖେଳଣା", "ରିଟର୍ଣ୍ଣ ଉପହାର", "ହାଇଦ୍ରାବାଦ ଡେଲିଭରି", "ଆଜିର ଅଫର", "ଦୋକାନ ଠିକଣା"]
+      },
+      pa: {
+        placeholder: "ਖਿਡੌਣੇ, ਤੋਹਫ਼ੇ, ਡਿਲੀਵਰੀ ਜਾਂ ਆਰਡਰ ਬਾਰੇ ਪੁੱਛੋ...",
+        welcome: "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! 🙏 <strong>ਜੈ ਜੈ ਵਾਰਾਹੀ ਸ਼ਾਪ</strong> ਵਿੱਚ ਤੁਹਾਡਾ ਸੁਆਗਤ ਹੈ! ਮੈਂ ਤੁਹਾਡਾ AI ਸਹਾਇਕ ਹਾਂ।<br><br>ਸਾਡੇ ਹੱਥ ਨਾਲ ਬਣੇ ਖਿਡੌਣੇ, ਪਿੱਤਲ ਦੇ ਤੋਹਫ਼ੇ, ਹੈਦਰਾਬਾਦ 1-3 ਘੰਟੇ ਦੀ ਐਕਸਪ੍ਰੈਸ ਡਿਲੀਵਰੀ ਜਾਂ ਆਰਡਰ ਟਰੈਕਿੰਗ ਬਾਰੇ ਪੁੱਛੋ!",
+        pills: ["₹500 ਹੇਠਾਂ ਖਿਡੌਣੇ", "ਰਿਟਰਨ ਗਿਫਟ", "ਹੈਦਰਾਬਾਦ ਡਿਲੀਵਰੀ", "ਅੱਜ ਦੀ ਪੇਸ਼ਕਸ਼", "ਦੁਕਾਨ ਦਾ ਪਤਾ"]
+      },
+      ur: {
+        placeholder: "کھلونے، تحائف، ڈیلیوری یا آرڈر کے بارے میں پوچھیں...",
+        welcome: "سلام! 🙏 <strong>جے جے واراہی شاپ</strong> میں خوش آمدید! میں آپ کا AI کسٹمر اسسٹنٹ ہوں۔<br><br>ہمارے ہاتھ سے بنے کھلونے، پیتل کے تحائف، حیدرآباد 1-3 گھنٹے کی تیز رفتار ڈیلیوری یا اپنے آرڈر ٹریکنگ کے بارے میں مجھ سے پوچھیں!",
+        pills: ["500 روپے سے کم کھلونے", "ریٹرن تحائف", "حیدرآباد ڈیلیوری", "آج کی پیشکش", "دکان کا پتہ"]
+      },
+      es: {
+        placeholder: "Pregunta sobre juguetes, regalos, envíos o pedidos...",
+        welcome: "¡Hola! 🙏 ¡Bienvenido a <strong>Jaya Jaya Varahi Shop & Gifts</strong>! Soy tu asistente de IA para atención al cliente.<br><br>¡Pregúntame sobre juguetes de madera artesanales, regalos de latón, entrega rápida en Hyderabad (1-3 horas) o el estado de tu pedido!",
+        pills: ["Juguetes < ₹500", "Regalos de Recuerdo", "Entrega Rápida Hyderabad", "Oferta de Hoy", "Dirección"]
+      },
+      fr: {
+        placeholder: "Posez vos questions sur les jouets, cadeaux, livraisons...",
+        welcome: "Bonjour ! 🙏 Bienvenue chez <strong>Jaya Jaya Varahi Shop & Gifts</strong> ! Je suis votre assistant client IA.<br><br>Posez-moi des questions sur nos jouets en bois, cadeaux en laiton, livraison express à Hyderabad (1-3h) ou suivez votre commande !",
+        pills: ["Jouets < ₹500", "Cadeaux de Retour", "Livraison Rapide Hyderabad", "Offre du Jour", "Adresse"]
+      },
+      de: {
+        placeholder: "Fragen zu Spielzeug, Geschenken, Lieferung...",
+        welcome: "Hallo! 🙏 Willkommen bei <strong>Jaya Jaya Varahi Shop & Gifts</strong>! Ich bin Ihr KI-Kundenservice-Assistent.<br><br>Fragen Sie mich nach Holzspielzeug, Messing-Rückgeschenken, Hyderabad-Expresslieferung (1-3 Std.) oder Ihrer Sendungsverfolgung!",
+        pills: ["Spielzeug < ₹500", "Rückgeschenke", "Express-Lieferung Hyderabad", "Heutiges Angebot", "Adresse"]
+      },
+      ar: {
+        placeholder: "اسأل عن الألعاب، الهدايا، التوصيل أو الطلب...",
+        welcome: "مرحباً بكم! 🙏 أهلاً بكم في <strong>متجر جايا جايا فاراهي للهدايا</strong>! أنا مساعد خدمة العملاء الذكي.<br><br>اسألني عن ألعاب الأطفال الخشبية، وهدايا النحاس، والتوصيل السريع في حيدر أباد (1-3 ساعات)، أو تتبع طلبك!",
+        pills: ["ألعاب أقل من 500 روبية", "هدايا المناسبات", "توصيل حيدر أباد السريع", "عرض اليوم", "عنوان المتجر"]
+      }
+    };
+    return map[code] || map['en'];
+  }
+
+  applyChatLanguage(lang) {
+    const loc = this.getChatbotLocale(lang);
+    if (this.chatbotInput) {
+      this.chatbotInput.placeholder = loc.placeholder;
+    }
+    if (this.chatbotMessages) {
+      this.chatbotMessages.innerHTML = `
+        <div class="chat-msg bot-msg">
+          <div class="msg-avatar"><i class='bx bx-bot'></i></div>
+          <div class="msg-bubble">${loc.welcome}</div>
+        </div>
+      `;
+    }
+    this.renderChatPills(loc.pills);
+  }
+
+  closeChatbotAndBackHome() {
+    if (this.chatbotWindow) {
+      this.chatbotWindow.classList.add('hidden');
+    }
+    // Return store to main catalog home view
+    if (this.productDetailSection) this.productDetailSection.classList.add('hidden');
+    if (this.wishlistSection) this.wishlistSection.classList.add('hidden');
+    if (this.cartSection) this.cartSection.classList.add('hidden');
+    if (this.catalogSection) this.catalogSection.classList.remove('hidden');
+
+    this.currentCategory = 'all';
+    if (this.navBtns) {
+      this.navBtns.forEach(b => {
+        if (b.dataset.category === 'all') {
+          b.classList.add('active');
+        } else {
+          b.classList.remove('active');
+        }
+      });
+    }
+    if (typeof this.updateSectionTitle === 'function') {
+      this.updateSectionTitle();
+    }
+    if (typeof this.renderProducts === 'function') {
+      this.renderProducts();
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  renderChatPills(pills) {
+    if (!this.quickPillsContainer || !Array.isArray(pills)) return;
+    const homePill = `<button type="button" class="quick-pill quick-pill-home" data-action="back_home" title="Close AI & Back to Store Home"><i class='bx bx-home-alt'></i> Back Home</button>`;
+    const otherPills = pills.map(p => 
+      `<button type="button" class="quick-pill" data-query="${escapeHTML(p)}">${escapeHTML(p)}</button>`
+    ).join('');
+    this.quickPillsContainer.innerHTML = homePill + otherPills;
+  }
+
+  async handleUserChatMessage(queryText) {
+    if (!queryText) return;
+    const isWelcome = queryText.toLowerCase() === 'welcome';
+    if (!isWelcome) {
+      this.appendChatMessage(queryText, 'user');
+    }
+
+    this.showChatTypingIndicator();
+
+    try {
+      // Call RAG API endpoint
+      const response = await fetch('/api/chat/rag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: queryText,
+          language: this.chatLanguage || 'en',
+          customerPhone: (this.userProfile && this.userProfile.phone) || '',
+          dayDiscount: this.dayDiscount || 15,
+          orders: this.orders || []
+        })
+      });
+
+      this.removeChatTypingIndicator();
+
+      if (response.ok) {
+        const data = await response.json();
+        let botHtml = data.answer || "I am here to help!";
+
+        // Append grounded sources badge if available
+        if (data.sources && Array.isArray(data.sources) && data.sources.length > 0) {
+          const sourcesPills = data.sources.map(s => 
+            `<span class="chatbot-source-tag" title="Relevance: ${s.relevance_score || 'High'}"><i class='bx bx-check-shield' style='color:#10b981;'></i> ${escapeHTML(s.title)}</span>`
+          ).join('');
+          botHtml += `<div class="chatbot-sources-wrap"><span style="font-size:10px;color:#94a3b8;font-weight:600;margin-right:2px;">📚 Grounded Sources:</span>${sourcesPills}</div>`;
+        }
+
+        this.appendChatMessage(botHtml, 'bot');
+
+        // Dynamically update follow-up pills
+        if (data.follow_ups && Array.isArray(data.follow_ups) && data.follow_ups.length > 0) {
+          this.renderChatPills(data.follow_ups);
+        }
+        return;
+      }
+    } catch (err) {
+      console.warn('[RAG Chatbot] API unavailable, using resilient local fallback:', err);
+    }
+
+    // Graceful offline fallback
+    this.removeChatTypingIndicator();
+    const fallbackResponse = this.getAIChatbotResponse(queryText, this.chatLanguage);
+    this.appendChatMessage(fallbackResponse, 'bot');
   }
 
   showChatTypingIndicator() {

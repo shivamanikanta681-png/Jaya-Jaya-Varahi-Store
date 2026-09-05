@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Jaya Jaya Varahi Shop - Firestore Products Security Rules
+    // Only products are stored in Firebase Firestore.
+    // (Customer data, orders, discounts & accounts are strictly in Supabase).
+    match /products/{productId} {
+      // Allow any customer visiting the store to browse products
+      allow read: if true;
+      // Allow store owner / console to create, update, and delete catalog items
+      allow write: if true;
+    }
+  }
+}

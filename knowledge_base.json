@@ -1,0 +1,170 @@
+{
+  "store_info": {
+    "name": "Jaya Jaya Varahi Gifts & Shop",
+    "tagline": "Divine Gifts, Handcrafted Wooden Toys, STEM Robots & Sacred Decor",
+    "location": "CH7W+8RQ, P&T Colony, Peerzadiguda / Boduppal, Hyderabad, Telangana - 500092",
+    "hours": "Every Day (Monday to Sunday) from 10:00 AM to 9:00 PM IST",
+    "phone": "+91 75693 04410",
+    "whatsapp": "+91 75693 04410",
+    "email": "jayajayavarahi@gmail.com",
+    "maps_url": "https://www.google.com/maps/place/Jaya+Jaya+Varahi+Gifts-Boduppal/@17.4133514,78.5971605,20.75z/data=!4m6!3m5!1s0x3bcb9f0037de2275:0x20f4ee54d5b56648!8m2!3d17.4133882!4d78.5971045"
+  },
+  "chunks": [
+    {
+      "id": "chunk_store_location_hours",
+      "category": "store_identity",
+      "title": "Store Location, Timings & Contact Information",
+      "keywords": ["address", "location", "where", "boduppal", "peerzadiguda", "hyderabad", "map", "directions", "timing", "hours", "sunday", "open", "close", "phone", "whatsapp", "contact", "email", "call", "చిరునామా", "షాప్ ఎక్కడ", "సమయం", "ఓపెన్", "पता", "दुकान", "समय", "முகவரி", "நேரம்", "ವಿಳಾಸ", "ಸಮಯ"],
+      "content": "Jaya Jaya Varahi Gifts is located at CH7W+8RQ, P&T Colony, Peerzadiguda / Boduppal, Hyderabad, Telangana - 500092. The store is open every day (Monday through Sunday) from 10:00 AM to 9:00 PM IST. Customers can visit in person or reach customer care via WhatsApp or Call at +91 75693 04410, or email jayajayavarahi@gmail.com.",
+      "quick_answer": {
+        "en": "📍 **Store Address:** CH7W+8RQ, P&T Colony, Peerzadiguda / Boduppal, Hyderabad - 500092.<br>⏰ **Hours:** Mon - Sun, 10:00 AM - 9:00 PM IST.<br>📞 **Contact / WhatsApp:** <a href='https://wa.me/917569304410' target='_blank' style='color:#16a34a;font-weight:700;'>+91 75693 04410</a><br><a href='https://www.google.com/maps/place/Jaya+Jaya+Varahi+Gifts-Boduppal/@17.4133514,78.5971605,20.75z' target='_blank' class='chat-action-btn'><i class='bx bxs-map-pin'></i> Open Google Maps Directions</a>",
+        "te": "📍 **షాప్ చిరునామా:** CH7W+8RQ, P&T కాలనీ, పీర్జాదిగూడ / బోడుప్పల్, హైదరాబాద్ - 500092.<br>⏰ **సమయాలు:** ప్రతిరోజూ ఉదయం 10:00 నుండి రాత్రి 9:00 వరకు.<br>📞 **ఫోన్ / వాట్సాప్:** +91 75693 04410.",
+        "hi": "📍 **दुकान का पता:** CH7W+8RQ, P&T कॉलोनी, बोदुप्पल, हैदराबाद - 500092।<br>⏰ **समय:** रोजाना सुबह 10:00 से रात 9:00 बजे तक।<br>📞 **फोन / व्हाट्सएप:** +91 75693 04410।"
+      }
+    },
+    {
+      "id": "chunk_shipping_hyderabad",
+      "category": "delivery_policy",
+      "title": "Hyderabad Fast Express Delivery (1 to 3 Hours)",
+      "keywords": ["hyderabad", "fast delivery", "rapido", "uber", "bike delivery", "same day", "express", "urgent", "1 hour", "2 hours", "3 hours", "today", "హైదరాబాద్ డెలివరీ", "ఎంత సమయం", "రాపిడో", "ఉబర్", "ఫాస్ట్ డెలివరీ", "हैदराबाद डिलीवरी", "रैपिडो", "उबर", "फास्ट डिलीवरी", "ஹைதராபாத் டெலிவரி", "ಹೈದರಾಬಾದ್ ಡೆಲಿವರಿ"],
+      "content": "For customers in Hyderabad (including Boduppal, Uppal, Secunderabad, Madhapur, Gachibowli, Kukatpally, LB Nagar, Dilsukhnagar, etc.), orders are dispatched immediately via Rapido Bike Delivery and Uber Connect packages. Delivery time is usually within 1 to 3 hours from dispatch, and live driver contact details are provided upon dispatch.",
+      "quick_answer": {
+        "en": "🚀 **Hyderabad Express Delivery (1 - 3 Hours):**<br>We dispatch via **Rapido Bike & Uber Connect** across Hyderabad!<br>• **Speed:** Doorstep delivery within **1 to 3 hours**!<br>• **Live Tracking:** Driver contact and live tracking shared as soon as dispatched.<br>• **Rates:** Fair standard distance rates.",
+        "te": "🚀 **హైదరాబాద్ ఎక్స్‌ప్రెస్ డెలివరీ (1 - 3 గంటల్లో):**<br>హైదరాబాద్ పరిధిలో **రాపిడో & ఉబర్ కనెక్ట్** ద్వారా 1 నుండి 3 గంటల్లోనే సేమ్ డే ఫాస్ట్ డెలివరీ చేయబడుతుంది!",
+        "hi": "🚀 **हैदराबाद एक्सप्रेस डिलीवरी (1 से 3 घंटे):**<br>हैदराबाद में **रैपिडो और उबर कनेक्ट** से सिर्फ 1-3 घंटे में आपके घर तक डिलीवरी उपलब्ध है!"
+      }
+    },
+    {
+      "id": "chunk_shipping_outside_hyderabad",
+      "category": "delivery_policy",
+      "title": "All-India Courier Shipping (Outside Hyderabad)",
+      "keywords": ["outside hyderabad", "courier", "all india", "dtdc", "blue dart", "delhi", "bangalore", "mumbai", "chennai", "vijayawada", "vizag", "andhra", "shipping charges", "cost", "transit", "days", "కొరియర్", "ఆల్ ఇండియా", "ఎన్ని రోజులు", "कूरियर", "ऑल इंडिया", "கொரியர்", "ಕೊರಿಯರ್"],
+      "content": "For orders outside Hyderabad across India, items are safely packed in multi-layer bubble wrap and rigid corrugated boxes, then shipped via trusted express couriers like DTDC and Blue Dart. Delivery transit time is 2 to 4 business days. Tracking numbers are sent via WhatsApp and SMS upon shipment. Shipping rates are calculated affordably by package weight, and bulk return gift orders qualify for free delivery.",
+      "quick_answer": {
+        "en": "🚚 **All-India Express Courier (2 - 4 Days):**<br>Shipped via **DTDC & Blue Dart** with multi-layer protective packaging.<br>• **Delivery Window:** 2 to 4 business days nationwide.<br>• **Tracking:** Real-time tracking link sent to your phone/WhatsApp.<br>• **Free Delivery:** Available on wholesale bulk return gift orders!",
+        "te": "🚚 **ఆల్ ఇండియా కొరియర్ సర్వీస్ (2 - 4 రోజులు):**<br>DTDC మరియు Blue Dart ద్వారా భారతదేశం అంతటా 2-4 రోజుల్లో సురక్షితంగా డెలివరీ చేస్తాము. బల్క్ ఆర్డర్లపై ఉచిత డెలివరీ లభిస్తుంది!",
+        "hi": "🚚 **अखिल भारतीय कूरियर (2 से 4 दिन):**<br>DTDC और Blue Dart द्वारा 2-4 दिनों में सुरक्षित रूप से ऑल इंडिया डिलीवरी। थोक ऑर्डर पर फ्री डिलीवरी उपलब्ध है!"
+      }
+    },
+    {
+      "id": "chunk_cancellation_refund_damage",
+      "category": "returns_policy",
+      "title": "Cancellation, Damage Replacement & 100% Refund Policy",
+      "keywords": ["cancel", "cancellation", "refund", "return", "broken", "damaged", "replacement", "exchange", "money back", "breakage", "transit damage", "defective", "రద్దు", "రీఫండ్", "డ్యామేజ్", "విరిగిపోతే", "रद्द", "रिफंड", "टूट गया", "नुकसान", "ரத்து", "ரீஃபண்ட்", "ಕ್ಯಾನ್ಸಲ್", "ರೀಫಂಡ್"],
+      "content": "Customers can cancel an order within 24 hours of placement prior to dispatch for a 100% full refund. We have a strict 100% Free Replacement or Full Refund policy for any items damaged in transit or defective. Customers simply send an unboxing photo or video to our official WhatsApp (+91 75693 04410), and our team immediately dispatches a brand new replacement unit or processes a direct refund without hassle.",
+      "quick_answer": {
+        "en": "🛡️ **Cancellation & 100% Free Replacement Policy:**<br>• **Cancellation:** Hassle-free within 24 hours before dispatch.<br>• **Damaged in Transit or Broken?** We provide a **100% Free Immediate Replacement or Full Refund**! Simply send an unboxing photo or video to our WhatsApp (<a href='https://wa.me/917569304410' target='_blank' style='color:#16a34a;font-weight:700;'>+91 75693 04410</a>).",
+        "te": "🛡️ **రద్దు & 100% రీప్లేస్‌మెంట్ పాలసీ:**<br>• డిస్పాచ్ కావడానికి ముందు 24 గంటల్లో సులభంగా రద్దు చేసుకోవచ్చు.<br>• రవాణాలో ఏమైనా డ్యామేజ్ జరిగితే, వాట్సాప్ (+91 75693 04410) లో ఫోటో/వీడియో పంపితే **100% ఉచిత రీప్లేస్‌మెంట్ లేదా రీఫండ్** వెంటనే ఇస్తాము!",
+        "hi": "🛡️ **रद्दीकरण और 100% मुफ्त रिप्लेसमेंट नीति:**<br>• डिस्पैच से पहले 24 घंटे में आसान रद्दीकरण।<br>• यदि पार्सल में कोई सामान टूट जाए, तो व्हाट्सएप पर अनबॉक्सिंग फोटो/वीडियो भेजें, हम **100% मुफ्त रिप्लेसमेंट या पूरा रिफंड** देते हैं!"
+      }
+    },
+    {
+      "id": "chunk_order_tracking_process",
+      "category": "order_tracking",
+      "title": "Order Tracking & Live Status Procedure",
+      "keywords": ["track", "tracking", "order status", "where is my order", "order id", "check order", "order number", "live status", "dispatch", "ట్రాక్", "నా ఆర్డర్", "ఆర్డర్ స్టేటస్", "ट्रैक", "ऑर्डर स्टेटस", "ஆர்டர் டிராக்கிங்", "ಆರ್ಡರ್ ಟ್ರ್ಯಾಕ್"],
+      "content": "Customers can track their orders by entering their Order Number (e.g., #JJV-1001) or their Registered Phone Number directly in this AI Chatbot or on the website under 'My Account' > 'My Orders'. Live dispatch status, courier/Rapido rider information, and delivery updates are also sent directly via WhatsApp (+91 75693 04410).",
+      "quick_answer": {
+        "en": "📦 **How to Track Your Order:**<br>1. Ask this AI Assistant with your **Order ID** or **Phone Number** (e.g., *'Track order for 9876543210'*).<br>2. Or visit **'My Account' > 'My Orders'** at the top of the page.<br>3. For live GPS / rider coordinates, chat with our support on WhatsApp at <a href='https://wa.me/917569304410?text=Hi,%20please%20track%20my%20order' target='_blank' style='color:#16a34a;font-weight:700;'>+91 75693 04410</a>.",
+        "te": "📦 **మీ ఆర్డర్‌ను ట్రాక్ చేయండి:**<br>ఈ చాట్‌బాట్‌లో మీ **ఆర్డర్ నంబర్** లేదా **ఫోన్ నంబర్** ఎంటర్ చేయండి లేదా పైన 'My Account' లో చూడండి!",
+        "hi": "📦 **अपना ऑर्डर ट्रैक करें:**<br>इस चैटबॉट में अपना **ऑर्डर नंबर** या **फोन नंबर** टाइप करें, या ऊपर 'My Account' पर जाएं!"
+      }
+    },
+    {
+      "id": "chunk_payment_methods",
+      "category": "payment_policy",
+      "title": "Payment Options & Security",
+      "keywords": ["payment", "pay", "upi", "gpay", "google pay", "phonepe", "paytm", "bhim", "cod", "cash on delivery", "credit card", "debit card", "net banking", "secure", "పేమెంట్", "ఫోన్‌పే", "गूगल पे", "पेमेंट", "கட்டணம்", "ಪಾವತಿ"],
+      "content": "We accept all major payment modes: UPI (Google Pay, PhonePe, Paytm, BHIM), Debit/Credit Cards (Visa, Mastercard, RuPay), Net Banking across all Indian banks, and Cash on Delivery (COD) for eligible areas. WhatsApp order confirmation and UPI QR code payments are also supported with 100% end-to-end security and instant receipt generation.",
+      "quick_answer": {
+        "en": "💳 **Accepted Payment Methods:**<br>• **Instant UPI:** Google Pay, PhonePe, Paytm, BHIM.<br>• **Cards & Net Banking:** Debit Cards, Credit Cards, Internet Banking.<br>• **Cash on Delivery (COD):** Available for local Hyderabad and select pin codes.<br>• **WhatsApp Direct:** Confirm order and pay via UPI QR code on WhatsApp.",
+        "te": "💳 **పేమెంట్ పద్ధతులు:**<br>UPI (PhonePe, Google Pay, Paytm), నెట్ బ్యాంకింగ్, క్రెడిట్/డెబిట్ కార్డులు మరియు క్యాష్ ఆన్ డెలివరీ (COD) అందుబాటులో ఉన్నాయి.",
+        "hi": "💳 **भुगतान के तरीके:**<br>UPI (GPay, PhonePe, Paytm), डेबिट/क्रेडिट कार्ड, नेट बैंकिंग और कैश ऑन डिलीवरी (COD) उपलब्ध हैं।"
+      }
+    },
+    {
+      "id": "chunk_bulk_return_gifts",
+      "category": "bulk_orders",
+      "title": "Bulk Orders, Return Gifts & Wholesale Customization",
+      "keywords": ["bulk", "wholesale", "return gifts", "return gift", "wedding", "marriage", "birthday", "gruhapravesam", "housewarming", "navratri", "diwali", "pooja", "custom gift", "25 pieces", "50 pieces", "100 pieces", "discount", "బల్క్", "రిటర్న్ గిఫ్ట్‌లు", "వివాహం", "పెళ్లి", "గృహప్రవేశం", "పూజ", "थोक", "शादी", "गृहप्रवेश", "மொத்த ஆர்டர்", "ಬಲ್ಕ್"],
+      "content": "Jaya Jaya Varahi Shop specializes in divine, festive, and thoughtful return gifts for Weddings, Birthdays, Gruhapravesam (Housewarming), Navratri, Upanayanam, Baby Showers, and Corporate events. We provide customized name tags, decorative ribbons, and premium box packing. Tiered wholesale discounts are offered for orders of 25+, 50+, or 100+ pieces, with free shipping included.",
+      "quick_answer": {
+        "en": "🎁 **Bulk & Return Gift Inquiries:**<br>We specialize in bespoke return gifts for Weddings, Gruhapravesam, Birthdays, Navratri & Pooja ceremonies!<br>• **Customization:** Personalized name tags, festive wrapping & ribbon presentation.<br>• **Discounts:** Special tiered wholesale discounts for 25+, 50+, or 100+ units.<br>• **Delivery:** Free express courier on wholesale orders.<br><a href='https://wa.me/917569304410?text=Hello%20Jaya%20Varahi,%20I%20want%20a%20bulk%20quote%20for%20return%20gifts' target='_blank' class='chat-action-btn wa-btn'><i class='bx bxl-whatsapp'></i> Get Instant Bulk Quote on WhatsApp</a>",
+        "te": "🎁 **బల్క్ & రిటర్న్ గిఫ్ట్ ఆర్డర్లు:**<br>వివాహాలు, పుట్టినరోజులు, గృహప్రవేశం మరియు పూజల కోసం అందమైన రిటర్న్ గిఫ్ట్‌లు, కస్టమైజ్డ్ గిఫ్ట్ ప్యాకింగ్ మరియు హోల్‌సేల్ డిస్కౌంట్లు లభిస్తాయి! వాట్సాప్ +91 75693 04410 లో సంప్రదించండి.",
+        "hi": "🎁 **थोक और रिटर्न गिफ्ट्स:**<br>शादी, जन्मदिन, गृहप्रवेश और पूजा के लिए विशेष रिटर्न गिफ्ट्स, आकर्षक गिफ्ट पैकिंग और थोक छूट उपलब्ध हैं। तुरंत कोटेशन के लिए व्हाट्सएप करें!"
+      }
+    },
+    {
+      "id": "chunk_material_quality_safety",
+      "category": "product_quality",
+      "title": "Material Quality, Authenticity & Child Safety",
+      "keywords": ["quality", "material", "brass", "pure brass", "wooden", "wood", "safe", "child safe", "non toxic", "food grade", "stainless steel", "tri ply", "durable", "authentic"],
+      "content": "All items sold at Jaya Jaya Varahi Shop follow strict quality and safety standards: (1) Pure Brass Pooja Items & Diyas are cast with heavy-gauge, durable brass and hand-finished with traditional antique luster. (2) Handcrafted Wooden Toys are made from natural wood with rounded edges and painted with non-toxic, child-safe vegetable/organic dyes. (3) Stainless Steel Cookware utilizes food-grade Tri-Ply construction with a heavy aluminum core for uniform heat distribution on both induction and gas stoves.",
+      "quick_answer": {
+        "en": "✨ **Quality & Material Authenticity:**<br>• **Pure Brass Diyas & Decor:** Heavy-gauge, hand-carved pure brass with lasting antique finish.<br>• **Wooden Toys:** 100% natural wood, smooth splinter-free rounded corners, non-toxic organic vegetable dyes safe for kids.<br>• **Tri-Ply Cookware:** Premium food-grade 3-layer steel with induction and gas compatibility.",
+        "te": "✨ **నాణ్యత & భద్రతా ప్రమాణాలు:**<br>• స్వచ్ఛమైన ఇత్తడి పూజా సామాగ్రి మరియు దీపాలు.<br>• పిల్లలకు పూర్తిగా సురక్షితమైన నాన్-టాక్సిక్ సహజ చెక్క బొమ్మలు.<br>• ఇండక్షన్ మరియు గ్యాస్ రెండింటికీ సరిపోయే ప్రీమియం స్టెయిన్‌లెస్ స్టీల్ కుక్‌వేర్.",
+        "hi": "✨ **गुणवत्ता और सुरक्षा:**<br>• शुद्ध पीतल के पारंपरिक दीये और पूजा सामग्री।<br>• बच्चों के लिए सुरक्षित, गैर-विषाक्त प्राकृतिक लकड़ी के खिलौने।<br>• गैस और इंडक्शन के लिए उपयुक्त 3-परत प्रीमियम स्टेनलेस स्टील के बर्तन।"
+      }
+    },
+    {
+      "id": "chunk_how_to_order_checkout",
+      "category": "ordering_guide",
+      "title": "How to Place an Order Step-by-Step",
+      "keywords": ["how to order", "how to buy", "steps", "order process", "checkout", "place order", "cart", "add to cart"],
+      "content": "Placing an order is easy: (1) Browse items and click 'Add to Cart'. (2) Open your Cart using the Cart button in the header. (3) Click 'Proceed to Checkout', choose Hyderabad or Outside Hyderabad delivery, enter your delivery address and contact phone. (4) Click 'Place & Confirm Order' to finalize your order with instant order ID generation and WhatsApp confirmation.",
+      "quick_answer": {
+        "en": "🛒 **How to Order in 4 Easy Steps:**<br>1. Browse products and tap <strong>'Add to Cart'</strong>.<br>2. Click the <strong>Cart</strong> button in the top navigation bar.<br>3. Click <strong>'Proceed to Checkout'</strong>, pick *Hyderabad (1-3 hrs)* or *Outside Hyderabad (Courier)*, and enter address.<br>4. Tap <strong>'Place & Confirm Order'</strong>!",
+        "te": "🛒 **ఆర్డర్ చేసే విధానం:**<br>1. నచ్చిన వస్తువుపై 'Add to Cart' క్లిక్ చేయండి.<br>2. కార్ట్ ఓపెన్ చేసి 'Proceed to Checkout' నొక్కండి.<br>3. మీ అడ్రస్ ఎంటర్ చేసి ఆర్డర్ కన్ఫర్మ్ చేయండి!",
+        "hi": "🛒 **ऑर्डर करने का आसान तरीका:**<br>1. 'Add to Cart' पर क्लिक करें।<br>2. कार्ट खोलकर 'Proceed to Checkout' पर जाएं।<br>3. अपना पता भरकर 'Place & Confirm Order' दबाएं!"
+      }
+    },
+    {
+      "id": "chunk_discounts_daily_offers",
+      "category": "promotions",
+      "title": "Today's Discounts, Offers & Day Themes",
+      "keywords": ["discount", "offer", "sale", "coupon", "promo", "deal", "percentage", "today discount", "day theme"],
+      "content": "Jaya Jaya Varahi Shop runs dynamic daily theme offers. Today, an automatic 15% discount is applied across the entire storefront catalog! No coupon code is required; discounted prices are computed and applied automatically during checkout.",
+      "quick_answer": {
+        "en": "🎉 **Today's Active Store Offer:**<br>Enjoy an automatic **15% DISCOUNT** applied across all items storewide today! Discount is calculated automatically on every product card and at checkout.",
+        "te": "🎉 **ఈరోజు ఆఫర్:**<br>ఈరోజు స్టోర్‌లోని అన్ని వస్తువులపై ఆటోమేటిక్ **15% డిస్కౌంట్** లభిస్తుంది!",
+        "hi": "🎉 **आज का ऑफर:**<br>आज स्टोर के सभी उत्पादों पर स्वचालित **15% की भारी छूट** उपलब्ध है!"
+      }
+    },
+    {
+      "id": "chunk_catalog_toys_recommendations",
+      "category": "product_catalog",
+      "title": "Toys Collection & Children Gifts",
+      "keywords": ["toys", "toy", "robot", "car", "racing car", "wooden toy", "stem", "learning", "plush", "teddy", "teddy bear", "kids", "boy", "girl", "birthday gift", "under 500", "under 1000"],
+      "content": "Our handcrafted Toys collection features: (1) Handcrafted Wooden Racing Toy Car (₹450) - non-toxic natural wood with smooth wheels. (2) Interactive Educational STEM Robot (₹899) - programmable lights, sounds, and STEM modules for ages 4+. (3) Plush Soft Cuddly Teddy Bear (₹350) - ultra-soft hypoallergenic plush for all age groups. Perfect for birthdays and milestones.",
+      "quick_answer": {
+        "en": "🧸 **Handcrafted Toys & STEM Learning:**<br>• **Wooden Racing Toy Car** (₹450 / ~₹382 discounted): Handcrafted, non-toxic organic wood.<br>• **Interactive STEM Educational Robot** (₹899 / ~₹764 discounted): Lights, sound & robotic learning modes.<br>• **Plush Soft Teddy Bear** (₹350 / ~₹297 discounted): Super soft, cuddly and child-safe.",
+        "te": "🧸 **బొమ్మల కలెక్షన్:**<br>• చెక్క రేసింగ్ కార్ (₹450)<br>• STEM ఎడ్యుకేషనల్ రోబోట్ (₹899)<br>• సాఫ్ట్ టెడ్డీ బేర్ (₹350).",
+        "hi": "🧸 **खिलौने संग्रह:**<br>• लकड़ी की रेसिंग कार (₹450)<br>• इंटरएक्टिव एजुकेशनल रोबोट (₹899)<br>• सॉफ्ट टेडी बियर (₹350)।"
+      }
+    },
+    {
+      "id": "chunk_catalog_return_gifts",
+      "category": "product_catalog",
+      "title": "Return Gifts, Divine Brass & Sacred Pooja Items",
+      "keywords": ["return gifts", "diya", "peacock diya", "brass", "pooja", "puja", "mandir", "deepam", "jewellery box", "jute bag", "gruhapravesam", "wedding return gift"],
+      "content": "Our divine return gifts include: (1) Hand-Carved Pure Brass Peacock Diya - timeless spiritual beauty, heavy brass casting, perfect for gruhapravesam and poojas. (2) Vintage Handcrafted Wooden Jewellery Box - intricate floral carvings with velvet interior. (3) Golden Thread Eco Jute Gift Bags - reusable and elegant. Available in individual and bulk sets.",
+      "quick_answer": {
+        "en": "🪔 **Divine Return Gifts & Brass Decor:**<br>• **Pure Brass Peacock Diya:** Hand-carved antique finish, auspicious for home temple & ceremonies.<br>• **Wooden Jewellery Box:** Handcrafted with intricate floral filigree and velvet lining.<br>• **Golden Thread Jute Gift Bags:** Reusable, durable and festive.",
+        "te": "🪔 **రిటర్న్ గిఫ్ట్‌లు & ఇత్తడి దీపాలు:**<br>• చేతితో చెక్కిన ఇత్తడి నెమలి దీపాలు.<br>• అందమైన చెక్క ఆభరణాల పెట్టెలు.<br>• పర్యావరణ అనుకూల జ్యూట్ గిఫ్ట్ బ్యాగులు.",
+        "hi": "🪔 **रिटर्न गिफ्ट्स और पीतल के दीये:**<br>• नक्काशीदार शुद्ध पीतल के मयूर दीये।<br>• दस्तकारी लकड़ी का आभूषण बॉक्स।<br>• गोल्डन थ्रेड जूट गिफ्ट बैग।"
+      }
+    },
+    {
+      "id": "chunk_catalog_kitchenware",
+      "category": "product_catalog",
+      "title": "Kitchenware & Induction Cookware",
+      "keywords": ["kitchenware", "cookware", "pan", "pot", "kadhai", "stainless steel", "tri ply", "induction", "mug", "coffee mug", "granite pan", "cooking"],
+      "content": "Our kitchen collection features heavy-duty Tri-Ply Stainless Steel Cookware pots, granite non-stick frying pans, heavy bottom kadhais, and ceramic coffee mug gift sets. All induction and gas stove compatible with stay-cool ergonomically designed handles.",
+      "quick_answer": {
+        "en": "🍳 **Kitchenware & Tri-Ply Cookware:**<br>• **Tri-Ply Stainless Steel Cookware:** Heavy aluminum core, induction & gas compatible.<br>• **Granite Non-Stick Frying Pan:** 100% PFOA-free durable coating.<br>• **Ceramic Coffee Mug Gift Sets:** Elegant glossy microwave-safe mugs.",
+        "te": "🍳 **వంటసామాగ్రి & కుక్‌వేర్:**<br>• 3-లేయర్ స్టెయిన్‌లెస్ స్టీల్ పాత్రలు (ఇండక్షన్ & గ్యాస్ అనుకూలం).<br>• గ్రానైట్ నాన్-స్టిక్ ఫ్రై పాన్‌లు.<br>• సిరామిక్ కాఫీ మగ్‌లు.",
+        "hi": "🍳 **किचनवेयर और कुकवेयर:**<br>• ट्राई-प्लाई स्टेनलेस स्टील के बर्तन (इंडक्शन और गैस दोनों के लिए)।<br>• ग्रेनाइट नॉन-स्टिक पैन।<br>• सिरेमिक कॉफी मग सेट।"
+      }
+    }
+  ]
+}
