@@ -1419,8 +1419,8 @@ class ShopApp {
                 ${discount > 0 ? `<span class="original-price">₹${originalPrice.toFixed(2)}</span>` : ''}
                 <span class="discounted-price">₹${discountedPrice.toFixed(2)}</span>
               </div>
-              <button type="button" class="add-cart-btn" data-product-id="${escapeHTML(p.id)}">
-                <i class='bx bx-cart-add'></i> Add
+              <button type="button" class="add-cart-btn" data-product-id="${escapeHTML(p.id)}" title="Add to Cart" aria-label="Add to Cart">
+                <i class='bx bx-cart-add'></i>
               </button>
             </div>
           </div>
@@ -1484,11 +1484,11 @@ class ShopApp {
         </div>
 
         <div class="detail-actions">
-          <button type="button" class="detail-add-btn" data-product-id="${escapeHTML(p.id)}" onclick="shopApp.addToCart('${escapeHTML(p.id)}')">
-            <i class='bx bx-cart-add'></i> Add to Shopping Cart
+          <button type="button" class="detail-add-btn" data-product-id="${escapeHTML(p.id)}" onclick="shopApp.addToCart('${escapeHTML(p.id)}')" title="Add to Cart" aria-label="Add to Cart">
+            <i class='bx bx-cart-add'></i>
           </button>
-          <button type="button" class="detail-wishlist-btn ${isWishlisted ? 'active' : ''}" data-product-id="${escapeHTML(p.id)}" onclick="shopApp.toggleWishlist('${escapeHTML(p.id)}')">
-            <i class='bx ${isWishlisted ? 'bxs-heart' : 'bx-heart'}'></i> ${isWishlisted ? 'Saved in Wishlist' : 'Add to Wishlist'}
+          <button type="button" class="detail-wishlist-btn ${isWishlisted ? 'active' : ''}" data-product-id="${escapeHTML(p.id)}" onclick="shopApp.toggleWishlist('${escapeHTML(p.id)}')" title="${isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}" aria-label="${isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}">
+            <i class='bx ${isWishlisted ? 'bxs-heart' : 'bx-heart'}'></i>
           </button>
           <button type="button" class="back-btn secondary-back-btn back-to-catalog-action">
             <i class='bx bx-left-arrow-alt'></i> Back to Home
@@ -1599,8 +1599,8 @@ class ShopApp {
                 ${discount > 0 ? `<span class="original-price">₹${originalPrice.toFixed(2)}</span>` : ''}
                 <span class="discounted-price">₹${discountedPrice.toFixed(2)}</span>
               </div>
-              <button type="button" class="add-cart-btn" data-product-id="${escapeHTML(p.id)}">
-                <i class='bx bx-cart-add'></i> Add to Cart
+              <button type="button" class="add-cart-btn" data-product-id="${escapeHTML(p.id)}" title="Add to Cart" aria-label="Add to Cart">
+                <i class='bx bx-cart-add'></i>
               </button>
             </div>
           </div>
