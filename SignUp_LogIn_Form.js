@@ -187,7 +187,7 @@ const DAY_THEMES = {
   }
 };
 
-const DAILY_SPECIAL_QUOTES = DAY_THEMES;
+const _DAILY_SPECIAL_QUOTES = DAY_THEMES;
 
 class ShopApp {
   constructor() {
@@ -1901,7 +1901,7 @@ class ShopApp {
   openCheckoutModal() {
     this.loadUserProfile();
 
-    let subtotal = 0;
+    let _subtotal = 0;
     let discountedTotal = 0;
     let totalItemsCount = 0;
 
@@ -1909,7 +1909,7 @@ class ShopApp {
       const product = this.products.find(p => String(p.id) === String(item.productId));
       if (product) {
         const discPrice = this.getProductDiscountedPrice(product);
-        subtotal += (parseFloat(product.price) || 0) * item.qty;
+        _subtotal += (parseFloat(product.price) || 0) * item.qty;
         discountedTotal += discPrice * item.qty;
         totalItemsCount += item.qty;
       }
@@ -1934,7 +1934,7 @@ class ShopApp {
         if (this.savedDispName) this.savedDispName.textContent = this.userProfile.name;
         if (this.savedDispPhone) this.savedDispPhone.textContent = this.userProfile.phone;
 
-        let fullAddr = '';
+        let fullAddr;
         if (this.userProfile.locationType === 'hyderabad') {
           const parts = [
             this.userProfile.house,
@@ -1988,7 +1988,7 @@ class ShopApp {
     const phone = document.getElementById('cust-phone')?.value.trim() || (this.userProfile ? this.userProfile.phone : '');
     const isHyd = (document.querySelector('input[name="location-type"]:checked')?.value || (this.userProfile?.locationType)) === 'hyderabad';
 
-    let fullAddress = '';
+    let fullAddress;
     if (isHyd) {
       const house = document.getElementById('hyd-house')?.value.trim() || this.userProfile?.house || '';
       const street = document.getElementById('hyd-street')?.value.trim() || this.userProfile?.street || '';
@@ -2622,7 +2622,7 @@ class ShopApp {
     const plat = platform.toLowerCase();
     const accounts = this.getSavedPlatformAccounts(platform);
 
-    let headerHTML = '';
+    let headerHTML;
     if (plat === 'google') {
       headerHTML = `
         <div class="device-auth-header google">
@@ -2692,7 +2692,7 @@ class ShopApp {
       else if (acc.avatarChar === 'v' || plat === 'whatsapp') iconOrChar = `<i class='bx bxl-whatsapp'></i>`;
 
       return `
-        <div class="device-account-item" onclick="window.shopApp.requestSocialPlatformOTP('${escapeHTML(acc.name)}', '${escapeHTML(acc.email)}', '${escapeHTML(platform)}', '${escapeHTML(acc.avatarChar || 'S')}', '${escapeHTML(acc.color || '#4285F4')}')">
+        <div class="device-account-item" onclick="window.shopApp.completeDeviceAuth('${escapeHTML(acc.name)}', '${escapeHTML(acc.email)}', '${escapeHTML(platform)}', '${escapeHTML(acc.avatarChar || 'S')}', '${escapeHTML(acc.color || '#4285F4')}')">
           <div class="device-account-avatar ${escapeHTML(acc.avatarChar ? acc.avatarChar.toLowerCase() : 'custom')}" style="${acc.color ? `background:${acc.color};` : ''}">
             ${iconOrChar}
           </div>
@@ -2711,8 +2711,8 @@ class ShopApp {
     }).join('');
 
     const noticeText = plat === 'google'
-      ? `🔒 Google securely verifies your session with 2-Step OTP Verification on Jaya Jaya Varahi Shop.`
-      : `🔒 Secure OTP verification directly on Jaya Jaya Varahi Shop.`;
+      ? `🔒 Google securely signs you in with 1-click instant session on Jaya Jaya Varahi Shop.`
+      : `🔒 Instant 1-click sign-in on Jaya Jaya Varahi Shop.`;
 
     this.deviceAuthContent.innerHTML = `
       ${headerHTML}
@@ -2723,7 +2723,7 @@ class ShopApp {
             <div class="device-account-avatar custom"><i class='bx bx-user-plus'></i></div>
             <div class="device-account-info">
               <div class="device-account-name" style="color:#7494ec;">Use another ${escapeHTML(platform)} account</div>
-              <div class="device-account-email">Sign in with a different personal account & verify OTP</div>
+              <div class="device-account-email">Sign in with a different personal account</div>
             </div>
             <i class='bx bx-chevron-right' style="color:#7494ec; font-size:20px;"></i>
           </div>
@@ -2747,7 +2747,7 @@ class ShopApp {
     this.deviceAuthContent.innerHTML = `
       <div class="device-auth-header ${plat}">
         <div class="device-auth-title" style="${plat === 'google' ? 'color:#1e293b;' : 'color:#fff;'}">Add ${escapeHTML(platform)} Account</div>
-        <div class="device-auth-sub" style="${plat === 'google' ? '' : 'color:rgba(255,255,255,0.9);'}">Enter your details to receive an OTP verification code on your device.</div>
+        <div class="device-auth-sub" style="${plat === 'google' ? '' : 'color:rgba(255,255,255,0.9);'}">Enter your details to sign in directly to Jaya Jaya Varahi Shop.</div>
       </div>
       <div class="device-auth-body">
         <form class="device-custom-acc-form" id="custom-account-add-form" onsubmit="window.shopApp.handleCustomAccountSubmit(event, '${escapeHTML(platform)}')">
@@ -2761,7 +2761,7 @@ class ShopApp {
           </div>
           <div class="device-auth-actions" style="margin-top:8px;">
             <button type="submit" class="device-auth-btn-primary ${plat}">
-              <i class='bx bx-send'></i> Send OTP Verification Code
+              <i class='bx bx-check-circle'></i> Continue & Sign In
             </button>
             <button type="button" class="device-auth-btn-secondary" onclick="window.shopApp.openDeviceSocialAuth('${escapeHTML(platform)}')">
               <i class='bx bx-arrow-back'></i> Back to Accounts
@@ -2798,7 +2798,7 @@ class ShopApp {
     };
 
     this.savePlatformAccount(platform, newAccount);
-    this.requestSocialPlatformOTP(name, email, platform, avatarChar, color);
+    this.completeDeviceAuth(name, email, platform, avatarChar, color);
   }
 
   // ── SOCIAL MEDIA PLATFORM OTP DISPATCH & VERIFICATION ENGINE ──
@@ -2812,7 +2812,7 @@ class ShopApp {
 
     // Clean and normalize phone number for WhatsApp (+91 India)
     const rawDigits = String(email || name || '').replace(/[^0-9]/g, '');
-    let waPhone = '';
+    let waPhone;
     if (rawDigits.length === 10) {
       waPhone = '91' + rawDigits;
     } else if (rawDigits.length === 12 && rawDigits.startsWith('91')) {
@@ -3101,47 +3101,64 @@ class ShopApp {
 
   completeDeviceAuth(name, email, platform, avatarChar, color) {
     if (!this.deviceAuthContent) return;
+    
+    // Show quick authenticating feedback
     this.deviceAuthContent.innerHTML = `
-      <div class="auth-loading-state">
-        <div class="auth-spinner"></div>
-        <div style="font-size:16px; font-weight:700; color:#1e293b; margin-bottom:6px;">Verifying ${escapeHTML(platform)} OTP Code...</div>
-        <div style="font-size:13px; color:#64748b;">Authenticating session for ${escapeHTML(name)}...</div>
+      <div class="auth-loading-state" style="padding: 40px 20px; text-align: center;">
+        <div class="auth-spinner" style="margin: 0 auto 16px;"></div>
+        <div style="font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">
+          Signing in with ${escapeHTML(platform)}...
+        </div>
+        <div style="font-size: 13.5px; color: #64748b;">
+          Switching to account <strong>${escapeHTML(name)}</strong>
+        </div>
       </div>
     `;
 
     setTimeout(() => {
-      this.currentUser = { name, email, platform, avatarChar, color: color || '#4285F4', timestamp: new Date().toISOString() };
+      // 1. Save selected user state
+      this.currentUser = { 
+        name, 
+        email, 
+        platform, 
+        avatarChar: avatarChar || name[0].toUpperCase(), 
+        color: color || '#4285F4', 
+        timestamp: new Date().toISOString() 
+      };
+      
       try {
         localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
-      } catch(e) {}
-      
+      } catch (e) {}
+
+      // 2. Sync with Supabase & update UI
+      this.syncUserWithSupabase(this.currentUser);
       this.updateUserAuthUI();
-      if (this.socialDeviceModal) this.socialDeviceModal.classList.add('hidden');
-      if (this.loginModal) this.loginModal.classList.add('hidden');
-      this.showToast(`🎉 Verified & Signed in successfully via ${escapeHTML(platform)}! Welcome, ${escapeHTML(name)}.`, 'success');
-      
-      // Autofill customer checkout fields (cust-name & cust-phone)
-      const custNameInput = document.getElementById('cust-name') || document.getElementById('c-name');
-      const custPhoneInput = document.getElementById('cust-phone');
-      const emailInput = document.getElementById('c-email');
-      if (custNameInput && !custNameInput.value) custNameInput.value = name;
-      if (emailInput && !emailInput.value && email && !email.includes('@whatsapp')) emailInput.value = email;
-      if (custPhoneInput && !custPhoneInput.value && email && email.includes('@whatsapp')) {
+
+      // 3. Auto-fill Customer and Account fields
+      const custName = document.getElementById('cust-name') || document.getElementById('c-name');
+      if (custName) custName.value = name;
+
+      const accName = document.getElementById('acc-name');
+      const accEmail = document.getElementById('acc-email');
+      const accPhone = document.getElementById('acc-phone');
+      const custPhone = document.getElementById('cust-phone');
+      if (accName) accName.value = name;
+      if (accEmail && email && !email.includes('@whatsapp')) accEmail.value = email;
+      if (custPhone && email && email.includes('@whatsapp')) {
         const digits = email.replace(/\D/g, '').slice(-10);
-        if (digits.length === 10) custPhoneInput.value = digits;
+        if (digits.length === 10) custPhone.value = digits;
+      }
+      if (accPhone && email && email.includes('@whatsapp')) {
+        const digits = email.replace(/\D/g, '').slice(-10);
+        if (digits.length === 10) accPhone.value = digits;
       }
 
-      // Autofill My Account fields (acc-name & acc-email)
-      const accNameInput = document.getElementById('acc-name');
-      const accEmailInput = document.getElementById('acc-email');
-      const accPhoneInput = document.getElementById('acc-phone');
-      if (accNameInput && !accNameInput.value) accNameInput.value = name;
-      if (accEmailInput && !accEmailInput.value && email && !email.includes('@whatsapp')) accEmailInput.value = email;
-      if (accPhoneInput && !accPhoneInput.value && email && email.includes('@whatsapp')) {
-        const digits = email.replace(/\D/g, '').slice(-10);
-        if (digits.length === 10) accPhoneInput.value = digits;
-      }
-    }, 550);
+      // 4. Close dialogs
+      if (this.socialDeviceModal) this.socialDeviceModal.classList.add('hidden');
+      if (this.loginModal) this.loginModal.classList.add('hidden');
+
+      this.showToast(`🎉 Welcome, ${escapeHTML(name)}! Signed in via ${escapeHTML(platform)}.`, 'success');
+    }, 450);
   }
 
   promptCustomDeviceAuth(platform) {
@@ -4210,7 +4227,6 @@ class ShopApp {
   async requestEmailOTP(email, mode = 'reset') {
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     let hasSmtp = false;
-    let statusDetail = '';
 
     try {
       const resp = await fetch('/api/send-otp', {
@@ -4222,7 +4238,7 @@ class ShopApp {
       if (resp.ok) {
         const data = await resp.json();
         hasSmtp = Boolean(data.hasSmtpConfigured);
-        statusDetail = data.statusDetail || '';
+        const _statusDetail = data.statusDetail || '';
       }
     } catch (err) {
       console.info('[JJV OTP Engine] Running in local client-side mode:', err.message);
