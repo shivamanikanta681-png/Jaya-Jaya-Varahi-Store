@@ -218,6 +218,13 @@ class ShopApp {
     this.loadProductsFromFirebase();
     this.loadStoreSettingsFromSupabase();
     this.loadCategoriesFromSupabase();
+
+    // Automatically display login form when website is opened
+    if (this.loginModal && (!this.currentUser || !this.currentUser.name)) {
+      setTimeout(() => {
+        if (this.loginModal) this.loginModal.classList.remove('hidden');
+      }, 400);
+    }
   }
 
   getTodaySpecialQuote() {
@@ -377,8 +384,8 @@ class ShopApp {
     this.wishlistCountBadge = document.getElementById('wishlist-count');
 
     // Cart Buttons
-    this.searchCartBtn = document.getElementById('search-cart-btn');
-    this.headerCartBtn = document.getElementById('header-cart-btn');
+    this.searchCartBtn = document.getElementById('search-cart-btn') || document.getElementById('header-cart-btn');
+    this.headerCartBtn = document.getElementById('header-cart-btn') || document.getElementById('search-cart-btn');
 
     // My Account Modal & Elements
     this.accountModal = document.getElementById('account-modal');
@@ -716,11 +723,32 @@ class ShopApp {
       const container = this.loginModal.querySelector('.container');
       const registerBtn = this.loginModal.querySelector('.register-btn');
       const loginBtn = this.loginModal.querySelector('.login-btn');
+      const mobileTabLogin = document.getElementById('mobile-tab-login');
+      const mobileTabRegister = document.getElementById('mobile-tab-register');
+      const mobileSwitchToReg = document.getElementById('mobile-switch-to-register');
+      const mobileSwitchToLogin = document.getElementById('mobile-switch-to-login');
 
-      if (registerBtn && loginBtn && container) {
-        registerBtn.addEventListener('click', () => container.classList.add('active'));
-        loginBtn.addEventListener('click', () => container.classList.remove('active'));
-      }
+      const setAuthMode = (mode) => {
+        if (!container) return;
+        if (mode === 'register') {
+          container.classList.add('active');
+          if (mobileTabRegister) mobileTabRegister.classList.add('active');
+          if (mobileTabLogin) mobileTabLogin.classList.remove('active');
+        } else {
+          container.classList.remove('active');
+          if (mobileTabLogin) mobileTabLogin.classList.add('active');
+          if (mobileTabRegister) mobileTabRegister.classList.remove('active');
+        }
+      };
+
+      this.setLoginAuthMode = setAuthMode;
+
+      if (registerBtn) registerBtn.addEventListener('click', () => setAuthMode('register'));
+      if (loginBtn) loginBtn.addEventListener('click', () => setAuthMode('login'));
+      if (mobileTabRegister) mobileTabRegister.addEventListener('click', () => setAuthMode('register'));
+      if (mobileTabLogin) mobileTabLogin.addEventListener('click', () => setAuthMode('login'));
+      if (mobileSwitchToReg) mobileSwitchToReg.addEventListener('click', () => setAuthMode('register'));
+      if (mobileSwitchToLogin) mobileSwitchToLogin.addEventListener('click', () => setAuthMode('login'));
 
       const loginForm = document.getElementById('login-form');
       if (loginForm) {
@@ -3092,15 +3120,27 @@ class ShopApp {
       if (this.loginModal) this.loginModal.classList.add('hidden');
       this.showToast(`🎉 Verified & Signed in successfully via ${escapeHTML(platform)}! Welcome, ${escapeHTML(name)}.`, 'success');
       
-      const nameInput = document.getElementById('c-name');
+      // Autofill customer checkout fields (cust-name & cust-phone)
+      const custNameInput = document.getElementById('cust-name') || document.getElementById('c-name');
+      const custPhoneInput = document.getElementById('cust-phone');
       const emailInput = document.getElementById('c-email');
-      if (nameInput && !nameInput.value) nameInput.value = name;
+      if (custNameInput && !custNameInput.value) custNameInput.value = name;
       if (emailInput && !emailInput.value && email && !email.includes('@whatsapp')) emailInput.value = email;
+      if (custPhoneInput && !custPhoneInput.value && email && email.includes('@whatsapp')) {
+        const digits = email.replace(/\D/g, '').slice(-10);
+        if (digits.length === 10) custPhoneInput.value = digits;
+      }
 
+      // Autofill My Account fields (acc-name & acc-email)
       const accNameInput = document.getElementById('acc-name');
       const accEmailInput = document.getElementById('acc-email');
+      const accPhoneInput = document.getElementById('acc-phone');
       if (accNameInput && !accNameInput.value) accNameInput.value = name;
       if (accEmailInput && !accEmailInput.value && email && !email.includes('@whatsapp')) accEmailInput.value = email;
+      if (accPhoneInput && !accPhoneInput.value && email && email.includes('@whatsapp')) {
+        const digits = email.replace(/\D/g, '').slice(-10);
+        if (digits.length === 10) accPhoneInput.value = digits;
+      }
     }, 550);
   }
 
@@ -4205,7 +4245,7 @@ class ShopApp {
     if (hasSmtp) {
       this.showToast(`📩 Verification code dispatched to ${email}! Please check your inbox.`, 'success');
     } else {
-      this.showToast(`📩 6-digit verification code dispatched to ${escapeHTML(email)}.`, 'info');
+      this.showToast(`📩 Verification code for ${escapeHTML(email)}: ${otpCode}`, 'info', 10000);
     }
 
     this.renderEmailOTPStep2();
@@ -4244,11 +4284,19 @@ class ShopApp {
           </a>
         </div>
 
+        ${!hasSmtp ? `
+        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 14px; margin: 8px 0 14px; text-align:center;">
+          <div style="font-size:12px; color:#1e40af; font-weight:600;">🔑 Verification Code for Testing:</div>
+          <div style="font-size:22px; font-weight:800; letter-spacing:4px; color:#1d4ed8; margin:4px 0;">${escapeHTML(otpCode)}</div>
+          <div style="font-size:11px; color:#64748b;">(To deliver directly into your Gmail inbox, add your Gmail App Password to <code>.env</code>)</div>
+        </div>
+        ` : `
         <div style="margin: 8px 0 14px; text-align: center;">
           <a href="https://mail.google.com/" target="_blank" style="display:inline-flex; align-items:center; gap:6px; color:#b45309; font-size:12.5px; font-weight:600; text-decoration:none; padding:7px 16px; border-radius:20px; background:#fef3c7; border:1px solid #fde68a;">
             <i class='bx bx-envelope'></i> Open Webmail Inbox
           </a>
         </div>
+        `}
 
         <form id="email-otp-verify-form" onsubmit="window.shopApp.handleEmailOTPSubmit(event)" style="width:100%; margin-top:10px;">
           <div class="otp-inputs-grid" id="email-otp-inputs-wrapper">

@@ -425,52 +425,62 @@ class RAGPipeline:
         if not GEMINI_API_KEY:
             return None
 
-        try:
-            import requests
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-            
-            system_instruction = (
-                "You are the friendly, helpful AI Customer Support Assistant for 'Jaya Jaya Varahi Gifts & Shop' "
-                "(Boduppal, Hyderabad). Your task is to answer customer questions accurately, warmly, and concisely.\n\n"
-                "STRICT GROUNDING RULES:\n"
-                "1. Only state facts directly present in the provided STORE KNOWLEDGE CONTEXT.\n"
-                "2. If you do not have enough information, politely direct the customer to our WhatsApp at +91 75693 04410.\n"
-                f"3. Respond naturally in {language.upper()} language or the language used in the query.\n"
-                "4. Format your answer with clean Markdown, emojis, and bullet points for readability."
-            )
+        system_instruction = (
+            "You are the friendly, helpful AI Customer Support Assistant for 'Jaya Jaya Varahi Gifts & Shop' "
+            "(Boduppal, Hyderabad). Your task is to answer customer questions accurately, warmly, and concisely.\n\n"
+            "STRICT GROUNDING RULES:\n"
+            "1. Only state facts directly present in the provided STORE KNOWLEDGE CONTEXT.\n"
+            "2. If you do not have enough information, politely direct the customer to our WhatsApp at +91 75693 04410.\n"
+            f"3. Respond naturally in {language.upper()} language or the language used in the query.\n"
+            "4. Format your answer with clean Markdown, emojis, and bullet points for readability."
+        )
 
-            full_prompt = (
-                f"{system_instruction}\n\n"
-                f"--- STORE KNOWLEDGE CONTEXT ---\n{context_text}\n------------------------------\n\n"
-                f"CUSTOMER QUESTION:\n{prompt}\n\n"
-                "ASSISTANT RESPONSE:"
-            )
+        full_prompt = (
+            f"{system_instruction}\n\n"
+            f"--- STORE KNOWLEDGE CONTEXT ---\n{context_text}\n------------------------------\n\n"
+            f"CUSTOMER QUESTION:\n{prompt}\n\n"
+            "ASSISTANT RESPONSE:"
+        )
 
-            payload = {
-                "contents": [
-                    {
-                        "parts": [{"text": full_prompt}]
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": 0.3,
-                    "maxOutputTokens": 600
+        payload = {
+            "contents": [
+                {
+                    "parts": [{"text": full_prompt}]
                 }
+            ],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 600
             }
+        }
 
-            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=8)
-            if resp.status_code == 200:
-                data = resp.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    text_parts = candidates[0].get("content", {}).get("parts", [])
-                    if text_parts:
-                        ans = text_parts[0].get("text", "").strip()
-                        # Convert markdown bold to html bold for web UI consistency
-                        ans_html = ans.replace("\n", "<br>")
-                        return ans_html
-        except Exception as e:
-            print(f"[RAG] Gemini API call exception: {e}")
+        # Candidate models list in priority order
+        candidate_models = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-flash-latest"]
+
+        for model in candidate_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+            try:
+                import urllib.request
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            text_parts = candidates[0].get("content", {}).get("parts", [])
+                            if text_parts:
+                                ans = text_parts[0].get("text", "").strip()
+                                # Convert newlines to html breaks for chatbot web bubble
+                                ans_html = ans.replace("\n", "<br>")
+                                return ans_html
+            except Exception as e:
+                # Try next model if 404/not available
+                continue
 
         return None
 

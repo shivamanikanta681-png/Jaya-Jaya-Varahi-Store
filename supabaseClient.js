@@ -1,38 +1,160 @@
 // ==============================================================================
-// Jaya Jaya Varahi Shop - Supabase Client & Data Service
-// Exclusively stores EVERYTHING except Products:
-// - Customer Accounts & Authentication ('users')
-// - Customer Orders & Checkout ('orders')
-// - Day Discounts & Announcement Offers ('store_settings')
-// - Store Categories ('categories')
-// - Customer Wishlists ('wishlists')
-// (Note: Only Products are stored in Firebase Cloud Firestore)
+// Jaya Jaya Varahi Shop - Supabase Client
+// Handles Customer Auth, Orders, Categories, Settings & Wishlists
 // ==============================================================================
 
-const SUPABASE_CONFIG = {
-  url: "https://gftsfdlchvjylpitjbps.supabase.co",
-  key: "sb_publishable_aJ2OouHZ-cfj9WmmUVNOPA_IPS6GF51"
-};
+const SUPABASE_URL = "https://gftsfdlchvjylpitjbps.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_aJ2OouHZ-cfj9WmmUVNOPA_IPS6GF51";
+
+let supabaseClient = null;
 
 function initSupabaseClient() {
-  if (typeof supabase !== 'undefined' && supabase.createClient) {
-    window.supabaseClient = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
-    console.log('✅ Supabase Client initialized for all Non-Product Store Data!');
-    return window.supabaseClient;
+  try {
+    const supabaseLib = (typeof window !== 'undefined' && window.supabase) || (typeof supabase !== 'undefined' ? supabase : null);
+    if (supabaseLib && typeof supabaseLib.createClient === 'function') {
+      supabaseClient = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      if (typeof window !== 'undefined') {
+        window.supabaseClient = supabaseClient;
+      }
+      console.log("⚡ [Supabase] Client initialized successfully!");
+      return supabaseClient;
+    }
+  } catch (err) {
+    console.warn("Supabase init note:", err.message);
   }
   return null;
 }
 
+// Immediate and event-driven initialization
 initSupabaseClient();
-window.addEventListener('DOMContentLoaded', initSupabaseClient);
+if (typeof window !== 'undefined') {
+  window.addEventListener('DOMContentLoaded', () => {
+    if (!window.supabaseClient) initSupabaseClient();
+  });
+}
 
-// ── COMPREHENSIVE SUPABASE DATA SERVICE ──
 const supabaseDataService = {
   getClient() {
-    return window.supabaseClient || (typeof supabase !== 'undefined' && supabase.createClient ? initSupabaseClient() : null);
+    if (supabaseClient) return supabaseClient;
+    if (typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
+    return initSupabaseClient();
   },
 
-  // 1. Customer User Sync
+  // 1. Store Settings (Discounts & Announcements)
+  async getStoreSettings() {
+    const client = this.getClient();
+    if (!client) return null;
+    try {
+      // Try key-value row first
+      const { data: kvData, error: kvError } = await client
+        .from('store_settings')
+        .select('*')
+        .eq('key', 'discount_offers')
+        .maybeSingle();
+
+      if (!kvError && kvData && kvData.value) {
+        return kvData.value;
+      }
+
+      // Try single row with id
+      const { data, error } = await client
+        .from('store_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    } catch (e) {
+      console.warn("Supabase getStoreSettings note:", e.message);
+      return null;
+    }
+  },
+
+  async saveStoreSettings(settings) {
+    const client = this.getClient();
+    if (!client || !settings) return false;
+    try {
+      // Upsert key-value format
+      await client
+        .from('store_settings')
+        .upsert([{
+          key: 'discount_offers',
+          value: settings,
+          updated_at: new Date().toISOString()
+        }], { onConflict: 'key' });
+
+      console.log("✅ [Supabase] Store settings synced!");
+      return true;
+    } catch (e) {
+      console.warn("Supabase saveStoreSettings note:", e.message);
+      return false;
+    }
+  },
+
+  // 2. Categories Sync
+  async getCategories() {
+    const client = this.getClient();
+    if (!client) return null;
+    try {
+      const { data, error } = await client
+        .from('categories')
+        .select('*')
+        .order('builtin', { ascending: false });
+      if (error) throw error;
+      return data;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  async saveCategories(categories) {
+    const client = this.getClient();
+    if (!client || !categories) return false;
+    try {
+      const records = categories.map(c => ({
+        id: c.id,
+        name: c.name,
+        icon: c.icon || 'bx-grid-alt',
+        builtin: Boolean(c.builtin)
+      }));
+      const { error } = await client
+        .from('categories')
+        .upsert(records, { onConflict: 'id' });
+      if (error) throw error;
+      console.log("✅ [Supabase] Categories synced!");
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 3. Customer Wishlist Sync
+  async syncWishlist(email, wishlistItems) {
+    const client = this.getClient();
+    if (!client || !email) return false;
+    try {
+      const cleanEmail = String(email).toLowerCase().trim();
+      // Sync into users table profile
+      await client
+        .from('users')
+        .upsert({ email: cleanEmail, wishlist: wishlistItems, updated_at: new Date().toISOString() }, { onConflict: 'email' });
+
+      // Also sync into dedicated wishlists table if available
+      if (Array.isArray(wishlistItems) && wishlistItems.length > 0) {
+        const records = wishlistItems.map(prodId => ({
+          user_email: cleanEmail,
+          product_id: String(prodId)
+        }));
+        await client.from('wishlists').upsert(records, { onConflict: 'user_email,product_id' });
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 4. Customer User Sync
   async syncUser(user) {
     const client = this.getClient();
     if (!client || !user || !user.email) return null;
@@ -52,12 +174,11 @@ const supabaseDataService = {
       }
       return { data, error };
     } catch (err) {
-      console.warn('Supabase syncUser note:', err);
       return null;
     }
   },
 
-  // 2. Customer Order Sync
+  // 5. Customer Order Sync
   async syncOrder(orderPayload) {
     const client = this.getClient();
     if (!client || !orderPayload) return null;
@@ -67,111 +188,25 @@ const supabaseDataService = {
         .insert([orderPayload])
         .select();
       if (!error) {
-        console.log(`✅ [Supabase] Order ${orderPayload.order_number} saved to 'orders' table.`);
+        console.log(`✅ [Supabase] Order saved to 'orders' table.`);
       }
       return { data, error };
     } catch (err) {
-      console.warn('Supabase syncOrder note:', err);
       return null;
     }
   },
 
-  // 3. Store Settings & Discounts Sync
-  async getStoreSettings() {
-    const client = this.getClient();
-    if (!client) return null;
-    try {
-      const { data, error } = await client
-        .from('store_settings')
-        .select('*')
-        .eq('key', 'discount_offers')
-        .single();
-      if (!error && data && data.value) {
-        return data.value;
-      }
-      return null;
-    } catch (err) {
-      return null;
-    }
-  },
-
-  async saveStoreSettings(settings) {
-    const client = this.getClient();
-    if (!client || !settings) return false;
-    try {
-      const { error } = await client
-        .from('store_settings')
-        .upsert([{
-          key: 'discount_offers',
-          value: settings,
-          updated_at: new Date().toISOString()
-        }], { onConflict: 'key' });
-      if (!error) {
-        console.log('✅ [Supabase] Day discounts & offer banner saved to Supabase!');
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.warn('Supabase saveStoreSettings note:', err);
-      return false;
-    }
-  },
-
-  // 4. Categories Sync
-  async getCategories() {
-    const client = this.getClient();
-    if (!client) return null;
-    try {
-      const { data, error } = await client
-        .from('categories')
-        .select('*')
-        .order('builtin', { ascending: false });
-      if (!error && data && data.length > 0) {
-        return data;
-      }
-      return null;
-    } catch (err) {
-      return null;
-    }
-  },
-
-  async saveCategories(categories) {
-    const client = this.getClient();
-    if (!client || !categories) return false;
-    try {
-      const records = categories.map(c => ({
-        id: c.id,
-        name: c.name,
-        icon: c.icon || 'bx-grid-alt',
-        builtin: Boolean(c.builtin)
-      }));
-      await client.from('categories').upsert(records, { onConflict: 'id' });
-      console.log('✅ [Supabase] Categories synced to Supabase table!');
-      return true;
-    } catch (err) {
-      return false;
-    }
-  },
-
-  // 5. Customer Wishlist Sync
-  async syncWishlist(userEmail, items) {
-    const client = this.getClient();
-    if (!client || !userEmail) return false;
-    try {
-      const cleanEmail = userEmail.toLowerCase().trim();
-      // Store in users profile or wishlist table
-      const records = items.map(prodId => ({
-        user_email: cleanEmail,
-        product_id: String(prodId)
-      }));
-      if (records.length > 0) {
-        await client.from('wishlists').upsert(records, { onConflict: 'user_email,product_id' });
-      }
-      return true;
-    } catch (err) {
-      return false;
-    }
+  // Alias for compatibility
+  async insertOrder(orderPayload) {
+    return this.syncOrder(orderPayload);
   }
 };
 
-window.supabaseDataService = supabaseDataService;
+if (typeof window !== 'undefined') {
+  window.supabaseDataService = supabaseDataService;
+  window.supabaseClient = supabaseClient;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { supabaseClient, supabaseDataService };
+}

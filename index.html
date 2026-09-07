@@ -24,7 +24,7 @@
     <meta property="og:image" content="images/logo.png">
 
     <!-- Stylesheets & Icons -->
-    <link rel="stylesheet" href="SignUp_LogIn_Form.css?v=1.4">
+    <link rel="stylesheet" href="SignUp_LogIn_Form.css?v=1.5">
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
 </head>
 <body>
@@ -501,6 +501,16 @@
             </button>
             <!-- Provided Login / Signup split form container -->
             <div class="container">
+                <!-- Mobile Auth Tabs Switcher (Visible on mobile screens) -->
+                <div class="mobile-auth-tabs">
+                    <button type="button" class="mobile-auth-tab active" id="mobile-tab-login" aria-label="Switch to Login">
+                        <i class='bx bx-log-in-circle'></i> Sign In
+                    </button>
+                    <button type="button" class="mobile-auth-tab" id="mobile-tab-register" aria-label="Switch to Register">
+                        <i class='bx bx-user-plus'></i> Register
+                    </button>
+                </div>
+
                 <div class="form-box login">
                     <form id="login-form">
                         <h1>Login</h1>
@@ -517,7 +527,9 @@
                             <a href="#" onclick="window.shopApp?.openEmailOTPModal('login'); return false;" style="color: #d97706; font-size: 13.5px; font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 4px;"><i class='bx bx-envelope'></i> Login via OTP</a>
                         </div>
                         <button type="submit" class="btn">Login</button>
-                        <p>or login with social platforms</p>
+                        <div class="social-divider">
+                            <span>or login with social platforms</span>
+                        </div>
                         <div class="social-icons">
                             <button type="button" data-platform="Google" class="social-login-btn google" title="Sign in with Google" aria-label="Sign in with Google">
                                 <svg viewBox="0 0 24 24" width="34" height="34" xmlns="http://www.w3.org/2000/svg">
@@ -552,6 +564,10 @@
                                 </svg>
                                 <span class="social-tooltip">WhatsApp</span>
                             </button>
+                        </div>
+                        <div class="mobile-switch-prompt">
+                            <span>Don't have an account?</span>
+                            <button type="button" class="mobile-switch-link-btn" id="mobile-switch-to-register">Register Now</button>
                         </div>
                     </form>
                 </div>
@@ -572,7 +588,9 @@
                             <i class='bx bxs-lock-alt'></i>
                         </div>
                         <button type="submit" class="btn">Register</button>
-                        <p>or register with social platforms</p>
+                        <div class="social-divider">
+                            <span>or register with social platforms</span>
+                        </div>
                         <div class="social-icons">
                             <button type="button" data-platform="Google" class="social-login-btn google" title="Sign in with Google" aria-label="Sign in with Google">
                                 <svg viewBox="0 0 24 24" width="34" height="34" xmlns="http://www.w3.org/2000/svg">
@@ -607,6 +625,10 @@
                                 </svg>
                                 <span class="social-tooltip">WhatsApp</span>
                             </button>
+                        </div>
+                        <div class="mobile-switch-prompt">
+                            <span>Already have an account?</span>
+                            <button type="button" class="mobile-switch-link-btn" id="mobile-switch-to-login">Sign In</button>
                         </div>
                     </form>
                 </div>
@@ -1232,6 +1254,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics-compat.js"></script>
     <script src="firebaseClient.js"></script>
 
-    <script src="SignUp_LogIn_Form.js?v=1.4"></script>
+    <script src="SignUp_LogIn_Form.js?v=1.5"></script>
 </body>
 </html>

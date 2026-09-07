@@ -1759,6 +1759,34 @@ form {
   color: #7494ec;
 }
 
+.mobile-auth-tabs,
+.mobile-switch-prompt {
+  display: none;
+}
+
+.social-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  margin: 12px 0 6px 0;
+}
+
+.social-divider::before,
+.social-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+.social-divider span {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
 .toggle-box {
   position: absolute;
   width: 100%;
@@ -2834,9 +2862,300 @@ form {
     left: 15px;
     max-width: none;
   }
+
+  /* ── Responsive Login & Signup Modal (Mobile Form Factor) ── */
+  #login-modal {
+    padding: 16px 12px !important;
+    align-items: center !important;
+  }
+
+  .modal-content-wrapper {
+    width: 100% !important;
+    max-width: 420px !important;
+    margin: 0 auto !important;
+    position: relative !important;
+  }
+
+  .modal-content-wrapper .modal-close-btn {
+    top: 8px !important;
+    right: 8px !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    z-index: 50 !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18) !important;
+  }
+
+  .modal-content-wrapper .modal-close-btn i {
+    font-size: 22px !important;
+  }
+
+  .modal-content-wrapper .hanging-teddy-wrapper {
+    display: none !important;
+  }
+
+  .container {
+    width: 100% !important;
+    max-width: 420px !important;
+    height: auto !important;
+    min-height: unset !important;
+    max-height: calc(100vh - 32px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 24px !important;
+    padding: 18px 16px 20px !important;
+    box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.28) !important;
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* Hide the 50% desktop split toggle box on mobile */
+  .container .toggle-box {
+    display: none !important;
+  }
+
+  /* Segmented Tab Pill on Mobile */
+  .mobile-auth-tabs {
+    display: flex !important;
+    width: 100%;
+    background: #f1f5f9;
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 12px;
+    gap: 4px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
+    flex-shrink: 0;
+  }
+
+  .mobile-auth-tab {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #64748b;
+    background: transparent;
+    border: none;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    outline: none;
+  }
+
+  .mobile-auth-tab.active {
+    background: #ffffff;
+    color: #7494ec;
+    box-shadow: 0 2px 8px rgba(116, 148, 236, 0.2);
+  }
+
+  .mobile-auth-tab i {
+    font-size: 16px;
+  }
+
+  /* Full-width Form Box on Mobile */
+  .form-box {
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    right: auto !important;
+    left: auto !important;
+    top: auto !important;
+    padding: 0 !important;
+    background: transparent !important;
+    display: none !important;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s ease;
+  }
+
+  .container:not(.active) .form-box.login {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    opacity: 1;
+    visibility: visible;
+    animation: mobileFormFadeIn 0.25s ease;
+  }
+
+  .container.active .form-box.register {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    opacity: 1;
+    visibility: visible;
+    animation: mobileFormFadeIn 0.25s ease;
+  }
+
+  .container.active .form-box.login {
+    display: none !important;
+  }
+
+  .container:not(.active) .form-box.register {
+    display: none !important;
+  }
+
+  @keyframes mobileFormFadeIn {
+    0% {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .container h1 {
+    font-size: 22px !important;
+    margin: 2px 0 6px !important;
+    color: #0f172a;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .container p {
+    font-size: 12.5px !important;
+    margin: 8px 0 6px !important;
+    color: #64748b;
+    text-align: center;
+    position: relative;
+  }
+
+  /* Input fields */
+  .input-box {
+    position: relative;
+    margin: 10px 0 !important;
+    width: 100%;
+  }
+
+  .form-box.register .input-box {
+    margin: 8px 0 !important;
+  }
+
+  .input-box input {
+    width: 100%;
+    height: 46px;
+    padding: 0 42px 0 14px;
+    font-size: 14.5px;
+    border-radius: 11px;
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+  }
+
+  .input-box input:focus {
+    background: #ffffff;
+    border-color: #7494ec;
+    box-shadow: 0 0 0 3px rgba(116, 148, 236, 0.15);
+  }
+
+  .input-box i {
+    right: 14px;
+    font-size: 18px;
+  }
+
+  /* Forgot & OTP row */
+  .forgot-link {
+    margin: -2px 0 12px !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .forgot-link a {
+    font-size: 12.5px !important;
+  }
+
+  /* Action Buttons */
+  .btn {
+    height: 46px !important;
+    border-radius: 11px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+  }
+
+  /* Social Icons - One neat horizontal row on mobile */
+  .social-icons {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+    margin-top: 6px !important;
+    width: 100% !important;
+  }
+
+  .social-icons .social-login-btn,
+  .social-login-btn {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border-radius: 12px !important;
+    flex-shrink: 0;
+  }
+
+  .social-login-btn svg {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  /* Hide desktop hover tooltip on mobile touch */
+  .social-login-btn .social-tooltip {
+    display: none !important;
+  }
+
+  /* Mobile footer switch link prompt */
+  .mobile-switch-prompt {
+    display: flex !important;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 12.5px;
+    color: #64748b;
+  }
+
+  .mobile-switch-link-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: #7494ec;
+    font-weight: 700;
+    font-size: 12.5px;
+    cursor: pointer;
+    text-decoration: underline;
+  }
 }
 
 @media screen and (max-width: 480px) {
+  .container {
+    padding: 16px 14px 18px !important;
+    border-radius: 20px !important;
+  }
+
+  .social-icons .social-login-btn,
+  .social-login-btn {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    border-radius: 11px !important;
+  }
+
+  .social-login-btn svg {
+    width: 22px !important;
+    height: 22px !important;
+  }
+
   .product-grid {
     grid-template-columns: 1fr;
   }
@@ -5816,10 +6135,58 @@ body.dark-mode .checkout-card,
 body.dark-mode .account-card,
 body.dark-mode .owner-auth-card,
 body.dark-mode .owner-console-modal,
-body.dark-mode .info-policy-card {
-  background: #0f172a;
-  color: #f8fafc;
-  border: 1px solid #334155;
+body.dark-mode .info-policy-card,
+body.dark-mode .container {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+  border: 1px solid #334155 !important;
+}
+
+body.dark-mode .container h1 {
+  color: #f8fafc !important;
+}
+
+body.dark-mode .container .input-box input {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+body.dark-mode .container .input-box input:focus {
+  background: #1e293b !important;
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2) !important;
+}
+
+body.dark-mode .mobile-auth-tabs {
+  background: #1e293b !important;
+}
+
+body.dark-mode .mobile-auth-tab {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode .mobile-auth-tab.active {
+  background: #334155 !important;
+  color: #60a5fa !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+
+body.dark-mode .social-divider::before,
+body.dark-mode .social-divider::after {
+  background: #334155 !important;
+}
+
+body.dark-mode .social-divider span {
+  color: #64748b !important;
+}
+
+body.dark-mode .mobile-switch-prompt {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode .mobile-switch-link-btn {
+  color: #60a5fa !important;
 }
 
 body.dark-mode .checkout-card-header,
