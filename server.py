@@ -281,12 +281,8 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": "A valid email address is required"}).encode("utf-8"))
                 return
 
-            # Accept client-provided OTP (if 6-digit numeric) for cross-platform synchronization, or generate fresh code
-            client_otp = str(payload.get("otp", "")).strip()
-            if client_otp.isdigit() and len(client_otp) == 6:
-                otp_code = client_otp
-            else:
-                otp_code = f"{random.randint(100000, 999999)}"
+            # SERVER strictly generates the OTP, not the client
+            otp_code = f"{random.randint(100000, 999999)}"
             expires_at = time.time() + 300  # 5 minutes expiry
 
             OTP_CACHE[email] = {
@@ -299,7 +295,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             # Attempt real email send
             email_sent, status_note = send_real_email(email, otp_code, mode)
-            print(f">> [OTP] Verification code for {email}: {otp_code} (SMTP active: {email_sent})")
+            print(f">> [OTP] Secure verification code for {email}: {otp_code} (SMTP active: {email_sent})")
 
             response_data = {
                 "success": True,
@@ -309,6 +305,8 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "hasSmtpConfigured": email_sent,
                 "statusDetail": status_note
             }
+            if not email_sent:
+                response_data["devOtp"] = otp_code
 
             self._set_cors_headers(200)
             self.wfile.write(json.dumps(response_data).encode("utf-8"))

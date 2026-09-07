@@ -4225,20 +4225,20 @@ class ShopApp {
   }
 
   async requestEmailOTP(email, mode = 'reset') {
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     let hasSmtp = false;
+    let devOtp = null;
 
     try {
       const resp = await fetch('/api/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, mode, otp: otpCode })
+        body: JSON.stringify({ email, mode })
       });
 
       if (resp.ok) {
         const data = await resp.json();
         hasSmtp = Boolean(data.hasSmtpConfigured);
-        const _statusDetail = data.statusDetail || '';
+        devOtp = data.devOtp || null;
       }
     } catch (err) {
       console.info('[JJV OTP Engine] Running in local client-side mode:', err.message);
@@ -4251,7 +4251,7 @@ class ShopApp {
     this.pendingEmailOtp = {
       email,
       mode,
-      otpCode,
+      otpCode: devOtp,
       hasSmtp,
       resendCountdown: 60,
       timerId: null,
@@ -4260,8 +4260,10 @@ class ShopApp {
 
     if (hasSmtp) {
       this.showToast(`📩 Verification code dispatched to ${email}! Please check your inbox.`, 'success');
+    } else if (devOtp) {
+      this.showToast(`📩 Verification code for ${escapeHTML(email)}: ${devOtp}`, 'info', 10000);
     } else {
-      this.showToast(`📩 Verification code for ${escapeHTML(email)}: ${otpCode}`, 'info', 10000);
+      this.showToast(`📩 Verification code sent to ${escapeHTML(email)}!`, 'info');
     }
 
     this.renderEmailOTPStep2();
@@ -4488,8 +4490,8 @@ class ShopApp {
       console.info('[JJV OTP Engine] Client verification fallback active');
     }
 
-    // Fallback to local stored OTP
-    if (!isVerified && enteredCode === this.pendingEmailOtp.otpCode) {
+    // Fallback to local dev OTP only if dev mode
+    if (!isVerified && this.pendingEmailOtp.otpCode && enteredCode === this.pendingEmailOtp.otpCode) {
       isVerified = true;
     }
 
