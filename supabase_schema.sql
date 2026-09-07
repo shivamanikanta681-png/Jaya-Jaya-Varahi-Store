@@ -144,17 +144,48 @@ CREATE POLICY "Users update own profile"
 
 -- 4. Store Settings & Discounts Policies
 ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public read store settings" ON public.store_settings FOR SELECT USING (true);
-CREATE POLICY "Manage store settings" ON public.store_settings FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Manage store settings" ON public.store_settings;
+DROP POLICY IF EXISTS "Public read store settings" ON public.store_settings;
+DROP POLICY IF EXISTS "Admin manage store settings" ON public.store_settings;
+
+CREATE POLICY "Public read store settings" 
+    ON public.store_settings 
+    FOR SELECT 
+    USING (true);
+
+CREATE POLICY "Admin manage store settings" 
+    ON public.store_settings 
+    FOR ALL 
+    TO authenticated 
+    USING (auth.role() = 'service_role' OR auth.jwt() ->> 'role' = 'admin') 
+    WITH CHECK (auth.role() = 'service_role' OR auth.jwt() ->> 'role' = 'admin');
 
 -- 5. Categories Policies
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public read categories" ON public.categories FOR SELECT USING (true);
-CREATE POLICY "Manage categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Manage categories" ON public.categories;
+DROP POLICY IF EXISTS "Public read categories" ON public.categories;
+DROP POLICY IF EXISTS "Admin manage categories" ON public.categories;
+
+CREATE POLICY "Public read categories" 
+    ON public.categories 
+    FOR SELECT 
+    USING (true);
+
+CREATE POLICY "Admin manage categories" 
+    ON public.categories 
+    FOR ALL 
+    TO authenticated 
+    USING (auth.role() = 'service_role' OR auth.jwt() ->> 'role' = 'admin') 
+    WITH CHECK (auth.role() = 'service_role' OR auth.jwt() ->> 'role' = 'admin');
 
 -- 6. Wishlists Policies
 ALTER TABLE public.wishlists ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public manage wishlists" ON public.wishlists FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Public manage wishlists" ON public.wishlists;
+CREATE POLICY "Public manage wishlists" 
+    ON public.wishlists 
+    FOR ALL 
+    USING (true) 
+    WITH CHECK (true);
 
 -- =======================================================
 -- Initial Store Settings (Discounts & Announcements)
