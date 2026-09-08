@@ -574,10 +574,12 @@ class TestSmsOtpAuthentication(unittest.TestCase):
         dummy.headers = {"x-matched-path": "/api/chat/rag"}
         self.assertEqual(dummy.get_request_path(), "/api/chat/rag")
 
-        # 4. vercel.json contains outputDirectory: . and rewrites mapping /api/(.*) to /api/index.py
+        # 4. vercel.json contains framework: null, buildCommand, outputDirectory: ., and API rewrites
         vercel_json_path = PROJECT_ROOT / "vercel.json"
         with open(vercel_json_path, "r", encoding="utf-8") as f:
             v_conf = json.load(f)
+        self.assertIsNone(v_conf.get("framework"), "vercel.json framework must be null to disable auto framework detection")
+        self.assertEqual(v_conf.get("buildCommand"), "npm run build")
         self.assertEqual(v_conf.get("outputDirectory"), ".", "vercel.json outputDirectory must be '.' for static root deployment")
         rewrites = v_conf.get("rewrites", [])
         has_api_rewrite = any(r.get("source") == "/api/(.*)" and "api/index.py" in r.get("destination", "") for r in rewrites)
