@@ -543,6 +543,45 @@ class TestSmsOtpAuthentication(unittest.TestCase):
         self.assertFalse(valid)
         self.assertIn("expired", err.lower())
 
+    # ── TEST 34: Vercel serverless function compatibility ──
+    def test_34_vercel_serverless_handler_compatibility(self):
+        import http.server
+        import api.index as api_index
+
+        # 1. api/index.py exposes a valid handler subclass of BaseHTTPRequestHandler
+        self.assertTrue(hasattr(api_index, "handler"), "api/index.py must expose 'handler'")
+        self.assertTrue(
+            issubclass(api_index.handler, http.server.BaseHTTPRequestHandler),
+            "api/index.handler must inherit from BaseHTTPRequestHandler for Vercel Python runtime"
+        )
+
+        # 2. server.py also exposes 'handler'
+        self.assertTrue(hasattr(server, "handler"), "server.py must export 'handler'")
+        self.assertTrue(issubclass(server.handler, http.server.BaseHTTPRequestHandler))
+
+        # 3. Path resolution works across direct and rewritten routes
+        dummy = server.ShopRequestHandler.__new__(server.ShopRequestHandler)
+        dummy.headers = {}
+        dummy.path = "/api/auth/firebase-phone"
+        self.assertEqual(dummy.get_request_path(), "/api/auth/firebase-phone")
+
+        # Rewritten path with query param ?path=
+        dummy.path = "/api/index.py?path=/api/orders"
+        self.assertEqual(dummy.get_request_path(), "/api/orders")
+
+        # Injected header from Vercel edge network
+        dummy.path = "/api/index.py"
+        dummy.headers = {"x-matched-path": "/api/chat/rag"}
+        self.assertEqual(dummy.get_request_path(), "/api/chat/rag")
+
+        # 4. vercel.json contains rewrites mapping /api/(.*) to /api/index.py
+        vercel_json_path = PROJECT_ROOT / "vercel.json"
+        with open(vercel_json_path, "r", encoding="utf-8") as f:
+            v_conf = json.load(f)
+        rewrites = v_conf.get("rewrites", [])
+        has_api_rewrite = any(r.get("source") == "/api/(.*)" and "api/index.py" in r.get("destination", "") for r in rewrites)
+        self.assertTrue(has_api_rewrite, "vercel.json must rewrite /api/(.*) to api/index.py")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

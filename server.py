@@ -845,16 +845,39 @@ def sync_order_to_supabase(order_data: Dict[str, Any]) -> Tuple[bool, Any, str]:
         return False, None, str(e)
 
 class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
-    """Custom request handler with secure API endpoints and CORS support."""
+    """Custom request handler with secure API endpoints, CORS support, and Vercel Serverless Function compatibility."""
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(DIRECTORY), **kwargs)
+        try:
+            super().__init__(*args, directory=str(DIRECTORY), **kwargs)
+        except TypeError:
+            super().__init__(*args, **kwargs)
 
     def handle(self):
         try:
             super().handle()
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
             pass
+
+    def get_request_path(self) -> str:
+        """
+        Resolves canonical API route path, compatible with:
+        1. Local standalone server (self.path is direct, e.g. /api/auth/firebase-phone)
+        2. Vercel Serverless Function rewrites with ?path= query param
+        3. Vercel X-Matched-Path / X-Invoke-Path edge network headers
+        """
+        matched = self.headers.get("x-matched-path") or self.headers.get("x-invoke-path")
+        if matched and matched.startswith("/api/"):
+            return matched.split("?")[0]
+
+        parsed = urllib.parse.urlparse(self.path)
+        qs = urllib.parse.parse_qs(parsed.query)
+        if "path" in qs and qs["path"]:
+            p = qs["path"][0]
+            if p.startswith("/api/"):
+                return p.split("?")[0]
+
+        return self.path.split("?")[0]
 
     def end_headers(self):
         if hasattr(self, 'path') and any(self.path.split('?')[0].endswith(ext) for ext in ('.html', '.js', '.css', '.webp')):
@@ -876,12 +899,12 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
         self._set_cors_headers(200)
 
     def do_DELETE(self):
+        req_path = self.get_request_path()
         parsed_url = urllib.parse.urlparse(self.path)
-        path = parsed_url.path
         query_params = urllib.parse.parse_qs(parsed_url.query)
 
         # ── ROUTE: ADMIN PRODUCT DELETE ──
-        if path == "/api/admin/products":
+        if req_path == "/api/admin/products":
             if not is_authenticated_admin(self.headers):
                 self._set_cors_headers(403)
                 self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
@@ -908,8 +931,10 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(json.dumps({"success": False, "error": "Endpoint not found"}).encode("utf-8"))
 
     def do_GET(self):
+        req_path = self.get_request_path()
+
         # ── HEALTH CHECK ENDPOINT ──
-        if self.path == "/api/health":
+        if req_path == "/api/health":
             self._set_cors_headers(200)
             health_status = {
                 "success": True,
@@ -923,7 +948,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # ── RAG KNOWLEDGE BASE ENDPOINT ──
-        if self.path == "/api/rag/knowledge":
+        if req_path == "/api/rag/knowledge":
             rag = get_rag_pipeline()
             self._set_cors_headers(200)
             self.wfile.write(json.dumps({
@@ -947,7 +972,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"success": False, "error": "Invalid JSON format"}).encode("utf-8"))
             return
 
-        req_path = self.path.split("?")[0]
+        req_path = self.get_request_path()
 
         # ── ROUTE 1: ADMIN LOGIN ──
         if req_path == "/api/admin/login":
@@ -1713,6 +1738,9 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             self._set_cors_headers(404)
             self.wfile.write(json.dumps({"success": False, "error": "Endpoint not found"}).encode("utf-8"))
             return
+
+# Vercel Serverless Function entrypoint export
+handler = ShopRequestHandler
 
 def run_server():
     socketserver.TCPServer.allow_reuse_address = True
