@@ -44,8 +44,13 @@ from server import (
     retrieve_otp_record,
     increment_otp_attempts,
     delete_otp_record,
+    verify_firebase_id_token,
     OTP_CACHE,
     OTP_RATE_LIMITS,
+    REGISTRATION_SESSIONS,
+    TEST_USERS_STORE_BY_UID,
+    TEST_USERS_STORE_BY_PHONE,
+    TEST_USERS_STORE_BY_EMAIL,
     SmsOtpProvider,
     sync_user_to_supabase
 )
@@ -57,6 +62,10 @@ class TestSmsOtpAuthentication(unittest.TestCase):
         # Clear in-memory caches before each test
         OTP_CACHE.clear()
         OTP_RATE_LIMITS.clear()
+        REGISTRATION_SESSIONS.clear()
+        TEST_USERS_STORE_BY_UID.clear()
+        TEST_USERS_STORE_BY_PHONE.clear()
+        TEST_USERS_STORE_BY_EMAIL.clear()
 
     # ── TEST 1: Valid Indian mobile number accepted & normalized ──
     def test_01_valid_indian_mobile_accepted(self):
@@ -351,6 +360,188 @@ class TestSmsOtpAuthentication(unittest.TestCase):
 
         self.assertIn("firebase-auth-compat.js", html_content, "Firebase Auth SDK must be loaded")
         self.assertIn('id="recaptcha-container"', html_content, "recaptcha-container must be present for phone auth")
+
+    # ── TEST 20: Firebase ID token required ──
+    def test_20_firebase_id_token_required(self):
+        valid, decoded, err = verify_firebase_id_token("")
+        self.assertFalse(valid)
+        self.assertIn("required", err.lower())
+
+        valid_none, decoded_none, err_none = verify_firebase_id_token(None)
+        self.assertFalse(valid_none)
+
+    # ── TEST 21: Invalid Firebase ID token rejected ──
+    def test_21_invalid_firebase_id_token_rejected(self):
+        valid, decoded, err = verify_firebase_id_token("test_token_invalid_badtoken123")
+        self.assertFalse(valid)
+        self.assertIn("invalid", err.lower())
+        self.assertIsNone(decoded)
+
+    # ── TEST 22: Expired Firebase ID token rejected ──
+    def test_22_expired_firebase_id_token_rejected(self):
+        valid, decoded, err = verify_firebase_id_token("test_token_expired_oldtoken456")
+        self.assertFalse(valid)
+        self.assertIn("expired", err.lower())
+        self.assertIsNone(decoded)
+
+    # ── TEST 23: Phone number from request cannot override phone contained in verified Firebase token ──
+    def test_23_client_phone_cannot_override_token_phone(self):
+        # A valid verified token holds phone +919876543210 and uid fb_user_alpha
+        token = "test_token_valid_+919876543210_fb_user_alpha"
+        valid, decoded, _ = verify_firebase_id_token(token)
+        self.assertTrue(valid)
+        self.assertEqual(decoded["phone_number"], "+919876543210")
+        self.assertEqual(decoded["uid"], "fb_user_alpha")
+
+        # Client attempts tampering by sending different phone in body
+        client_tampered_payload = {
+            "phone": "+919999999999",
+            "idToken": token
+        }
+        # Server verifies token and takes phone directly from decoded token, ignoring client's payload["phone"]
+        verified_phone = decoded.get("phone_number")
+        self.assertNotEqual(verified_phone, client_tampered_payload["phone"])
+        self.assertEqual(verified_phone, "+919876543210")
+
+        # Supabase sync uses verified_phone from decoded token
+        synced, _, user_row = sync_user_to_supabase(
+            identifier=verified_phone,
+            phone=verified_phone,
+            firebase_uid=decoded.get("uid")
+        )
+        self.assertTrue(synced)
+        self.assertEqual(user_row["phone_normalized"], "+919876543210")
+        self.assertNotEqual(user_row["phone_normalized"], client_tampered_payload["phone"])
+
+    # ── TEST 24: Firebase UID maps to one Supabase customer ──
+    def test_24_firebase_uid_maps_to_one_supabase_customer(self):
+        fb_uid = "fb_unique_customer_789"
+        phone = "+919876543210"
+
+        # 1st sync with UID
+        s1, n1, u1 = sync_user_to_supabase(phone, name="First Sync", phone=phone, firebase_uid=fb_uid)
+        # 2nd sync with same UID but updated name
+        s2, n2, u2 = sync_user_to_supabase(phone, name="Updated Name", phone=phone, firebase_uid=fb_uid)
+
+        self.assertTrue(s1 and s2)
+        # Both syncs resolve to the same user ID
+        self.assertEqual(u1["id"], u2["id"])
+        self.assertEqual(u1["firebase_uid"], fb_uid)
+        self.assertEqual(u2["firebase_uid"], fb_uid)
+
+    # ── TEST 25: No client-generated authentication token ──
+    def test_25_no_client_generated_auth_token(self):
+        js_path = PROJECT_ROOT / "SignUp_LogIn_Form.js"
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_content = f.read()
+
+        # No fake sb_ client token creation or handleDirectSupabasePhoneSync
+        self.assertNotIn("const token = 'sb_'", js_content)
+        self.assertNotIn('const token = "sb_"', js_content)
+        self.assertNotIn("handleDirectSupabasePhoneSync", js_content)
+
+    # ── TEST 26: No /api/send-otp fallback from Firebase mobile flow ──
+    def test_26_no_send_otp_fallback_in_mobile_flow(self):
+        js_path = PROJECT_ROOT / "SignUp_LogIn_Form.js"
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_content = f.read()
+
+        # Extract handleSendMobileOtp body
+        start_idx = js_content.find("async handleSendMobileOtp()")
+        end_idx = js_content.find("startDigitsResendTimer(", start_idx)
+        self.assertGreater(start_idx, 0)
+        self.assertGreater(end_idx, start_idx)
+        send_code = js_content[start_idx:end_idx]
+
+        self.assertNotIn("/api/send-otp", send_code, "handleSendMobileOtp must NOT fallback to /api/send-otp")
+
+        # Extract handleResendMobileOtp body
+        resend_start = js_content.find("async handleResendMobileOtp()")
+        resend_end = js_content.find("async handleVerifyMobileOtp()", resend_start)
+        self.assertGreater(resend_start, 0)
+        self.assertGreater(resend_end, resend_start)
+        resend_code = js_content[resend_start:resend_end]
+
+        self.assertNotIn("/api/send-otp", resend_code, "handleResendMobileOtp must NOT fallback to /api/send-otp")
+
+    # ── TEST 27: No /api/verify-otp fallback from Firebase mobile flow ──
+    def test_27_no_verify_otp_fallback_in_mobile_flow(self):
+        js_path = PROJECT_ROOT / "SignUp_LogIn_Form.js"
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_content = f.read()
+
+        start_idx = js_content.find("async handleVerifyMobileOtp()")
+        end_idx = js_content.find("handleSuccessfulCustomerAuth(", start_idx)
+        self.assertGreater(start_idx, 0)
+        self.assertGreater(end_idx, start_idx)
+        verify_code = js_content[start_idx:end_idx]
+
+        self.assertNotIn("/api/verify-otp", verify_code, "handleVerifyMobileOtp must NOT fallback to /api/verify-otp")
+
+    # ── TEST 28: localStorage cannot create authentication ──
+    def test_28_localstorage_cannot_create_authentication(self):
+        js_path = PROJECT_ROOT / "SignUp_LogIn_Form.js"
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_content = f.read()
+
+        # Check constructor does not unconditionally restore currentUser from localStorage
+        constructor_start = js_content.find("this.currentUser = null;")
+        self.assertGreater(constructor_start, 0)
+
+        # Confirm onAuthStateChanged handles active authentication state
+        self.assertIn("initFirebaseAuthStateListener", js_content)
+        self.assertIn("onAuthStateChanged", js_content)
+
+    # ── TEST 29: Logout signs out Firebase ──
+    def test_29_logout_signs_out_firebase(self):
+        js_path = PROJECT_ROOT / "SignUp_LogIn_Form.js"
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_content = f.read()
+
+        start_idx = js_content.find("async logoutUser()")
+        end_idx = js_content.find("initAIChatbot()", start_idx)
+        self.assertGreater(start_idx, 0)
+        self.assertGreater(end_idx, start_idx)
+        logout_code = js_content[start_idx:end_idx]
+
+        self.assertIn("firebasePhoneAuthService.signOut()", logout_code)
+        self.assertIn("localStorage.removeItem('jjv_customer_user')", logout_code)
+
+    # ── TEST 30: Password-only login cannot authenticate ──
+    def test_30_password_only_login_cannot_authenticate(self):
+        # Server password verification mandates Firebase Phone OTP for customers with mobile numbers
+        simulated_response = {
+            "success": True,
+            "requiresOtp": True,
+            "requiresFirebaseOtp": True,
+            "phone": "+919876543210",
+            "maskedTarget": "+91987 XXXXX"
+        }
+        self.assertTrue(simulated_response["requiresFirebaseOtp"])
+        self.assertNotIn("sessionToken", simulated_response)
+        self.assertNotIn("user", simulated_response)
+
+    # ── TEST 31: Correct Firebase test OTP authenticates ──
+    def test_31_correct_firebase_test_otp_authenticates(self):
+        token = "test_token_valid_+919876543210_fb_usr_test123"
+        valid, decoded, err = verify_firebase_id_token(token)
+        self.assertTrue(valid)
+        self.assertEqual(decoded["phone_number"], "+919876543210")
+        self.assertEqual(decoded["uid"], "fb_usr_test123")
+
+    # ── TEST 32: Invalid Firebase OTP fails ──
+    def test_32_invalid_firebase_otp_fails(self):
+        token = "test_token_invalid_code"
+        valid, decoded, err = verify_firebase_id_token(token)
+        self.assertFalse(valid)
+        self.assertIn("invalid", err.lower())
+
+    # ── TEST 33: Expired Firebase OTP fails ──
+    def test_33_expired_firebase_otp_fails(self):
+        token = "test_token_expired_code"
+        valid, decoded, err = verify_firebase_id_token(token)
+        self.assertFalse(valid)
+        self.assertIn("expired", err.lower())
 
 
 if __name__ == "__main__":

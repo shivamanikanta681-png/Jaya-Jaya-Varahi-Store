@@ -469,16 +469,15 @@ class ShopApp {
     this.pendingEmailOtp = null;
 
     // Customer Current User State
+    // SECURITY: Never treat localStorage as proof of authentication.
+    // Real customer authentication is strictly determined via Firebase Auth onAuthStateChanged().
     this.currentUser = null;
-    try {
-      const savedUser = localStorage.getItem('jjv_customer_user');
-      if (savedUser) this.currentUser = JSON.parse(savedUser);
-    } catch(err) {}
   }
 
   bindEvents() {
     this.initTheme();
     this.initAudio();
+    this.initFirebaseAuthStateListener();
     this.updateUserAuthUI();
     this.initAIChatbot();
 
@@ -3183,12 +3182,67 @@ class ShopApp {
     }
   }
 
-  logoutUser() {
+  initFirebaseAuthStateListener() {
+    if (window.firebasePhoneAuthService && typeof window.firebasePhoneAuthService.getAuth === 'function') {
+      const auth = window.firebasePhoneAuthService.getAuth();
+      if (auth && typeof auth.onAuthStateChanged === 'function') {
+        auth.onAuthStateChanged(async (fbUser) => {
+          if (fbUser) {
+            // Legitimately authenticated in Firebase
+            let cached = null;
+            try {
+              const raw = localStorage.getItem('jjv_customer_user');
+              if (raw) cached = JSON.parse(raw);
+            } catch (_e) {}
+
+            if (cached && (cached.firebase_uid === fbUser.uid || cached.phone_normalized === fbUser.phoneNumber || cached.phone === fbUser.phoneNumber)) {
+              this.currentUser = cached;
+            } else {
+              const phone = fbUser.phoneNumber || '';
+              this.currentUser = {
+                id: fbUser.uid,
+                firebase_uid: fbUser.uid,
+                phone: phone,
+                phone_normalized: phone,
+                name: (cached && cached.name) || (phone ? phone.slice(-4) : 'Customer'),
+                email: fbUser.email || (cached && cached.email) || null,
+                platform: 'Firebase Phone Auth'
+              };
+              try {
+                localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
+              } catch (_e) {}
+            }
+            this.updateUserAuthUI();
+          } else {
+            // Unauthenticated in Firebase (or logged out):
+            // Invalidate any fake / lingering local storage object
+            if (this.currentUser) {
+              this.currentUser = null;
+            }
+            try {
+              localStorage.removeItem('jjv_customer_user');
+              sessionStorage.removeItem('jjv_session_token');
+            } catch (_e) {}
+            this.updateUserAuthUI();
+          }
+        });
+      }
+    }
+  }
+
+  async logoutUser() {
     this.currentUser = null;
-    localStorage.removeItem('jjv_customer_user');
-    sessionStorage.removeItem('jjv_session_token');
+    try {
+      localStorage.removeItem('jjv_customer_user');
+      sessionStorage.removeItem('jjv_session_token');
+    } catch (_e) {}
+
     if (window.firebasePhoneAuthService) {
-      window.firebasePhoneAuthService.signOut().catch(() => {});
+      try {
+        await window.firebasePhoneAuthService.signOut();
+      } catch (err) {
+        console.warn('[Firebase SignOut Note]', err);
+      }
     }
     this.updateUserAuthUI();
     this.showToast('You have been signed out successfully.', 'info');
@@ -4272,39 +4326,18 @@ class ShopApp {
 
     try {
       const masked = phone.slice(0, 3) + ' ' + phone.slice(3, 8) + ' ' + phone.slice(8).replace(/\d/g, '•');
-      let otpSent = false;
-      let cooldown = 30;
+      const cooldown = 30;
 
-      // 1. Firebase Phone Authentication (Free development/testing with test phone numbers)
-      if (window.firebasePhoneAuthService && window.firebasePhoneAuthService.isConfigured()) {
-        try {
-          const verifier = window.firebasePhoneAuthService.initRecaptcha('recaptcha-container');
-          const confirmationResult = await window.firebasePhoneAuthService.sendPhoneOtp(phone, verifier);
-          this.firebaseConfirmationResult = confirmationResult;
-          otpSent = true;
-          this.showToast(`📩 OTP dispatched via Firebase Phone Auth to ${masked}!`, 'success');
-        } catch (firebaseErr) {
-          console.warn('[Firebase Phone Auth Note]', firebaseErr);
-          if (firebaseErr.code === 'auth/invalid-phone-number') {
-            throw new Error('Invalid phone number format for Firebase Phone Authentication.', { cause: firebaseErr });
-          }
-        }
+      // STRICT REQUIREMENT: Firebase Phone Authentication ONLY. ZERO fallback to custom server OTP.
+      if (!window.firebasePhoneAuthService || !window.firebasePhoneAuthService.isConfigured()) {
+        throw new Error('Firebase Authentication is not configured or available. Ensure Firebase scripts are loaded.');
       }
 
-      // 2. Fallback to server /api/send-otp if Firebase client was not available
-      if (!otpSent) {
-        const res = await apiRequest('/api/send-otp', {
-          method: 'POST',
-          body: JSON.stringify({ phone: phone, purpose: 'login' })
-        });
-        if (res && res.success) {
-          otpSent = true;
-          cooldown = res.resendCooldown || 30;
-          this.showToast(`📩 OTP sent via SMS to ${masked}! Please enter the 6-digit code.`, 'success');
-        } else {
-          throw new Error(res?.error || 'Unable to send OTP. Please check your mobile number.');
-        }
-      }
+      const verifier = window.firebasePhoneAuthService.initRecaptcha('recaptcha-container');
+      const confirmationResult = await window.firebasePhoneAuthService.sendPhoneOtp(phone, verifier);
+      this.firebaseConfirmationResult = confirmationResult;
+
+      this.showToast(`📩 OTP dispatched via Firebase Phone Auth to ${masked}!`, 'success');
 
       if (this.pendingMobileOtp && this.pendingMobileOtp.timerId) {
         clearInterval(this.pendingMobileOtp.timerId);
@@ -4328,9 +4361,17 @@ class ShopApp {
       this.startDigitsResendTimer(cooldown);
       this.switchDigitsStep('verify');
     } catch (err) {
-      const msg = err.message || 'Error requesting phone verification OTP.';
+      console.warn('[Firebase Send OTP Error]', err);
+      let msg = err.message || 'Error requesting phone verification OTP via Firebase.';
+      if (err.code === 'auth/invalid-phone-number') {
+        msg = '⚠️ Invalid phone number format for Firebase Phone Authentication.';
+      } else if (err.code === 'auth/too-many-requests') {
+        msg = '⚠️ Too many attempts. Please wait a few minutes before trying again.';
+      } else if (err.code === 'auth/quota-exceeded') {
+        msg = '⚠️ SMS quota exceeded. Use pre-configured Firebase test phone numbers.';
+      }
       if (this.digitsPhoneError) {
-        this.digitsPhoneError.textContent = `⚠️ ${msg}`;
+        this.digitsPhoneError.textContent = msg;
         this.digitsPhoneError.classList.remove('hidden');
       }
       this.showToast(msg, 'error');
@@ -4375,32 +4416,17 @@ class ShopApp {
 
     try {
       const phone = this.pendingMobileOtp.phone;
-      let resent = false;
 
-      if (window.firebasePhoneAuthService && window.firebasePhoneAuthService.isConfigured()) {
-        try {
-          const verifier = window.firebasePhoneAuthService.initRecaptcha('recaptcha-container');
-          const confirmationResult = await window.firebasePhoneAuthService.sendPhoneOtp(phone, verifier);
-          this.firebaseConfirmationResult = confirmationResult;
-          resent = true;
-          this.showToast(`📩 New OTP sent via Firebase Phone Auth to ${this.pendingMobileOtp.masked}!`, 'success');
-        } catch (fbErr) {
-          console.warn('[Firebase Resend Note]', fbErr);
-        }
+      // STRICT REQUIREMENT: Firebase Phone Authentication ONLY. ZERO fallback to custom server OTP.
+      if (!window.firebasePhoneAuthService || !window.firebasePhoneAuthService.isConfigured()) {
+        throw new Error('Firebase Authentication is unavailable.');
       }
 
-      if (!resent) {
-        const res = await apiRequest('/api/send-otp', {
-          method: 'POST',
-          body: JSON.stringify({ phone: phone, purpose: this.pendingMobileOtp.purpose || 'login' })
-        });
-        if (res && res.success) {
-          resent = true;
-          this.showToast(`📩 New OTP dispatched to ${this.pendingMobileOtp.masked}!`, 'success');
-        } else {
-          throw new Error(res?.error || 'Unable to resend OTP at this time.');
-        }
-      }
+      const verifier = window.firebasePhoneAuthService.initRecaptcha('recaptcha-container');
+      const confirmationResult = await window.firebasePhoneAuthService.sendPhoneOtp(phone, verifier);
+      this.firebaseConfirmationResult = confirmationResult;
+
+      this.showToast(`📩 New OTP sent via Firebase Phone Auth to ${this.pendingMobileOtp.masked}!`, 'success');
 
       const cooldown = 30;
       this.startDigitsResendTimer(cooldown);
@@ -4408,7 +4434,12 @@ class ShopApp {
       cells.forEach(c => c.value = '');
       cells[0]?.focus();
     } catch (err) {
-      this.showToast(err.message || 'Failed to resend OTP.', 'error');
+      console.warn('[Firebase Resend OTP Error]', err);
+      let msg = err.message || 'Failed to resend OTP via Firebase.';
+      if (err.code === 'auth/too-many-requests') {
+        msg = '⚠️ Too many attempts. Please try again later.';
+      }
+      this.showToast(msg, 'error');
     } finally {
       if (this.btnResendMobileOtp) {
         this.btnResendMobileOtp.disabled = false;
@@ -4442,118 +4473,75 @@ class ShopApp {
     }
 
     try {
-      let isVerified = false;
-      let verifiedPhone = this.pendingMobileOtp.phone;
-      let idToken = null;
-
-      // 1. Verify via Firebase Phone Auth if session exists
-      if (this.firebaseConfirmationResult && typeof this.firebaseConfirmationResult.confirm === 'function') {
-        try {
-          const userCredential = await this.firebaseConfirmationResult.confirm(otpCode);
-          if (userCredential && userCredential.user) {
-            isVerified = true;
-            verifiedPhone = userCredential.user.phoneNumber || verifiedPhone;
-            try {
-              idToken = await userCredential.user.getIdToken();
-            } catch (_tErr) {
-              // optional id token
-            }
-          }
-        } catch (firebaseErr) {
-          console.warn('[Firebase Verification Note]', firebaseErr);
-          let errorMsg = 'Invalid verification code. Please check the code and try again.';
-          if (firebaseErr.code === 'auth/invalid-verification-code') {
-            errorMsg = '⚠️ Invalid OTP code entered. Please try again.';
-          } else if (firebaseErr.code === 'auth/code-expired') {
-            errorMsg = '⚠️ Verification code has expired. Please click "Resend OTP".';
-          } else if (firebaseErr.code === 'auth/too-many-requests') {
-            errorMsg = '⚠️ Too many attempts. Please try again later.';
-          }
-          if (this.digitsVerifyError) {
-            this.digitsVerifyError.textContent = errorMsg;
-            this.digitsVerifyError.classList.remove('hidden');
-          }
-          cells.forEach(c => c.value = '');
-          cells[0]?.focus();
-          this.showToast(errorMsg, 'error');
-          return;
-        }
+      // STRICT REQUIREMENT: Firebase Phone Authentication ONLY. ZERO custom verification fallback.
+      if (!this.firebaseConfirmationResult || typeof this.firebaseConfirmationResult.confirm !== 'function') {
+        throw new Error('No active Firebase phone verification session found. Please request a new OTP.');
       }
 
-      // 2. Fallback to server /api/verify-otp if Firebase session was not active
-      if (!isVerified) {
-        const res = await apiRequest('/api/verify-otp', {
-          method: 'POST',
-          body: JSON.stringify({
-            phone: this.pendingMobileOtp.phone,
-            otp: otpCode,
-            purpose: this.pendingMobileOtp.purpose || 'login'
-          })
-        });
-
-        if (res && res.success) {
-          isVerified = true;
-          if (res.isNewUser) {
-            this.pendingRegistration = {
-              verifiedToken: res.token || res.verifiedToken,
-              phone: this.pendingMobileOtp.phone
-            };
-            this.switchDigitsStep('profile');
-            this.showToast('✅ Mobile verified! Please enter your name to complete registration.', 'info');
-            return;
-          } else {
-            this.handleSuccessfulCustomerAuth(res.user, res.sessionToken);
-            return;
-          }
-        } else {
-          const errorMsg = res?.error || 'Invalid OTP code. Please try again.';
-          if (this.digitsVerifyError) {
-            this.digitsVerifyError.textContent = `⚠️ ${errorMsg}`;
-            this.digitsVerifyError.classList.remove('hidden');
-          }
-          cells.forEach(c => c.value = '');
-          cells[0]?.focus();
-          this.showToast(errorMsg, 'error');
-          return;
+      let userCredential = null;
+      try {
+        userCredential = await this.firebaseConfirmationResult.confirm(otpCode);
+      } catch (firebaseErr) {
+        console.warn('[Firebase Verification Error]', firebaseErr);
+        let errorMsg = 'Invalid verification code. Please check the code and try again.';
+        if (firebaseErr.code === 'auth/invalid-verification-code') {
+          errorMsg = '⚠️ Invalid OTP code entered. Please try again.';
+        } else if (firebaseErr.code === 'auth/code-expired') {
+          errorMsg = '⚠️ Verification code has expired. Please click "Resend OTP".';
+        } else if (firebaseErr.code === 'auth/too-many-requests') {
+          errorMsg = '⚠️ Too many attempts. Please try again later.';
         }
+        if (this.digitsVerifyError) {
+          this.digitsVerifyError.textContent = errorMsg;
+          this.digitsVerifyError.classList.remove('hidden');
+        }
+        cells.forEach(c => c.value = '');
+        cells[0]?.focus();
+        this.showToast(errorMsg, 'error');
+        return;
       }
 
-      // 3. Synchronize verified Firebase user with Supabase backend
-      if (isVerified) {
-        if (this.pendingMobileOtp.timerId) {
-          clearInterval(this.pendingMobileOtp.timerId);
-        }
+      if (!userCredential || !userCredential.user) {
+        throw new Error('Firebase authentication failed. No user credential returned.');
+      }
 
-        try {
-          const syncRes = await apiRequest('/api/auth/firebase-phone', {
-            method: 'POST',
-            body: JSON.stringify({
-              phone: verifiedPhone,
-              idToken: idToken
-            })
-          });
+      const fbUser = userCredential.user;
+      const idToken = await fbUser.getIdToken();
+      if (!idToken) {
+        throw new Error('Unable to retrieve verified Firebase ID token.');
+      }
 
-          if (syncRes && syncRes.success) {
-            if (syncRes.isNewUser) {
-              this.pendingRegistration = {
-                verifiedToken: syncRes.token,
-                phone: verifiedPhone
-              };
-              this.switchDigitsStep('profile');
-              this.showToast('✅ Mobile verified! Please enter your name to complete registration.', 'info');
-            } else {
-              this.handleSuccessfulCustomerAuth(syncRes.user, syncRes.sessionToken);
-            }
-          } else {
-            // Direct Supabase fallback for static Vercel deployments
-            await this.handleDirectSupabasePhoneSync(verifiedPhone);
-          }
-        } catch (syncErr) {
-          console.warn('[Sync API fallback note]', syncErr);
-          await this.handleDirectSupabasePhoneSync(verifiedPhone);
-        }
+      if (this.pendingMobileOtp.timerId) {
+        clearInterval(this.pendingMobileOtp.timerId);
+      }
+
+      // Backend Cryptographic Verification & Supabase Synchronization
+      // Backend validates the Firebase ID token with Firebase Admin SDK and extracts phone & UID
+      const syncRes = await apiRequest('/api/auth/firebase-phone', {
+        method: 'POST',
+        body: JSON.stringify({
+          idToken: idToken
+        })
+      });
+
+      if (!syncRes || !syncRes.success) {
+        // STRICT REQUIREMENT: If synchronization fails, do NOT authenticate the user or create a fake session.
+        const errMsg = syncRes?.error || 'Backend synchronization failed. Could not establish authenticated customer session.';
+        throw new Error(errMsg);
+      }
+
+      if (syncRes.isNewUser) {
+        this.pendingRegistration = {
+          verifiedToken: syncRes.token || idToken,
+          phone: syncRes.identifier || fbUser.phoneNumber
+        };
+        this.switchDigitsStep('profile');
+        this.showToast('✅ Mobile verified! Please enter your name to complete registration.', 'info');
+      } else {
+        this.handleSuccessfulCustomerAuth(syncRes.user, syncRes.sessionToken);
       }
     } catch (err) {
+      console.warn('[Verify Mobile OTP Error]', err);
       const msg = err.message || 'Verification failed. Please try again.';
       if (this.digitsVerifyError) {
         this.digitsVerifyError.textContent = `⚠️ ${msg}`;
@@ -4574,7 +4562,7 @@ class ShopApp {
       localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
       if (sessionToken) sessionStorage.setItem('jjv_session_token', sessionToken);
     } catch (err) {
-      console.warn('[LocalStorage] Error storing customer user:', err);
+      console.warn('[LocalStorage] Error storing customer user cache:', err);
     }
 
     this.syncUserWithSupabase(this.currentUser);
@@ -4582,25 +4570,6 @@ class ShopApp {
     this.loadWishlistFromSupabase();
     if (this.loginModal) this.loginModal.classList.add('hidden');
     this.showToast(`🎉 Welcome back, ${escapeHTML(this.currentUser.name || 'Customer')}! Logged in successfully.`, 'success');
-  }
-
-  async handleDirectSupabasePhoneSync(verifiedPhone) {
-    const userPayload = {
-      phone_normalized: verifiedPhone,
-      phone: verifiedPhone,
-      name: verifiedPhone.slice(-4),
-      platform: 'Firebase Phone Auth'
-    };
-    if (window.supabaseDataService) {
-      const res = await window.supabaseDataService.syncUser(userPayload);
-      const syncedUser = (res && res.data) || userPayload;
-      const randomBuf = new Uint8Array(16);
-      if (window.crypto && window.crypto.getRandomValues) {
-        window.crypto.getRandomValues(randomBuf);
-      }
-      const token = 'sb_' + Array.from(randomBuf).map(b => b.toString(16).padStart(2, '0')).join('');
-      this.handleSuccessfulCustomerAuth(syncedUser, token);
-    }
   }
 
   async handleCompleteProfile() {
@@ -4713,11 +4682,20 @@ class ShopApp {
       });
 
       if (res && res.success && res.requiresOtp) {
-        const masked = res.masked || identifier;
+        const masked = res.maskedTarget || res.masked || identifier;
         const cooldown = res.resendCooldown || 30;
 
+        if (res.requiresFirebaseOtp && res.phone) {
+          if (!window.firebasePhoneAuthService || !window.firebasePhoneAuthService.isConfigured()) {
+            throw new Error('Firebase Authentication is required for mobile OTP verification.');
+          }
+          const verifier = window.firebasePhoneAuthService.initRecaptcha('recaptcha-container');
+          const confirmationResult = await window.firebasePhoneAuthService.sendPhoneOtp(res.phone, verifier);
+          this.firebaseConfirmationResult = confirmationResult;
+        }
+
         this.pendingMobileOtp = {
-          phone: res.identifier,
+          phone: res.phone || res.identifier,
           masked: masked,
           purpose: 'password_login',
           resendCooldown: cooldown,
@@ -4733,7 +4711,7 @@ class ShopApp {
 
         this.startDigitsResendTimer(cooldown);
         this.switchDigitsStep('verify');
-        this.showToast(`🔒 Password verified! Security OTP dispatched to ${masked}.`, 'info');
+        this.showToast(`🔒 Password verified! Security OTP dispatched via Firebase to ${masked}.`, 'info');
       } else {
         const errorMsg = res?.error || 'Invalid credentials. Please check your phone/email or password.';
         if (this.digitsPasswordError) {

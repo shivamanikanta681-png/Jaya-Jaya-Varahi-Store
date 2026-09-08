@@ -121,6 +121,10 @@ Store Information:
 OTP_CACHE: Dict[str, Dict[str, Any]] = {}
 OTP_RATE_LIMITS: Dict[str, list] = {}  # key -> [timestamps]
 ADMIN_SESSIONS: Dict[str, float] = {}  # token -> expires_at
+REGISTRATION_SESSIONS: Dict[str, Dict[str, Any]] = {}  # token -> {phone, firebase_uid, expires_at}
+TEST_USERS_STORE_BY_UID: Dict[str, Dict[str, Any]] = {}
+TEST_USERS_STORE_BY_PHONE: Dict[str, Dict[str, Any]] = {}
+TEST_USERS_STORE_BY_EMAIL: Dict[str, Dict[str, Any]] = {}
 
 # ── Cryptographic Hashing Helpers ──
 def hash_otp(identifier: str, otp: str) -> str:
@@ -525,39 +529,101 @@ Boduppal, Hyderabad
     except Exception as e:
         return False, f"SMTP Error: {str(e)}"
 
+def verify_firebase_id_token(id_token: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+    """
+    Cryptographically verifies a Firebase ID token using Firebase Admin SDK.
+    Extracts verified UID, phone_number, and claims.
+    Rejects expired, malformed, or tampered tokens.
+    """
+    if not id_token or not str(id_token).strip():
+        return False, None, "Firebase ID token is required"
+
+    clean_token = str(id_token).strip()
+    if clean_token.lower().startswith("bearer "):
+        clean_token = clean_token[7:].strip()
+
+    # In TEST_MODE with simulated test tokens
+    if os.environ.get("TEST_MODE") == "1" and clean_token.startswith("test_token_"):
+        parts = clean_token.split("_", 4)
+        if len(parts) >= 3 and parts[2] == "expired":
+            return False, None, "Firebase ID token has expired"
+        if len(parts) >= 3 and parts[2] == "invalid":
+            return False, None, "Invalid Firebase ID token"
+        mock_phone = parts[3] if len(parts) >= 4 else "+919876543210"
+        mock_uid = parts[4] if len(parts) >= 5 else (f"fb_{parts[2]}" if len(parts) >= 3 else "fb_test_uid_123")
+        return True, {"uid": mock_uid, "phone_number": mock_phone, "auth_time": time.time()}, ""
+
+    try:
+        import firebase_admin
+        from firebase_admin import auth as fb_auth
+
+        if not firebase_admin._apps:
+            service_account_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_PATH")
+            service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+            if service_account_path and os.path.exists(service_account_path):
+                cred = firebase_admin.credentials.Certificate(service_account_path)
+                firebase_admin.initialize_app(cred)
+            elif service_account_json:
+                cred_dict = json.loads(service_account_json)
+                cred = firebase_admin.credentials.Certificate(cred_dict)
+                firebase_admin.initialize_app(cred)
+            else:
+                project_id = os.environ.get("FIREBASE_PROJECT_ID", "jaya-jaya-varahi-shop")
+                firebase_admin.initialize_app(options={"projectId": project_id})
+
+        decoded = fb_auth.verify_id_token(clean_token)
+        return True, decoded, ""
+    except Exception as e:
+        return False, None, f"Firebase token verification failed: {str(e)}"
+
 def sync_user_to_supabase(
     identifier: str,
     name: Optional[str] = None,
     platform: str = "Mobile OTP Account",
     phone: Optional[str] = None,
-    email: Optional[str] = None
+    email: Optional[str] = None,
+    firebase_uid: Optional[str] = None
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Inserts or updates user in Supabase 'users' table using service client.
-    Supports both Indian mobile numbers (+91...) and email addresses.
-    Prevents duplicate accounts for the same normalized phone number.
+    Supports Firebase UID, Indian mobile numbers (+91...), and email addresses.
+    Prevents duplicate accounts for the same Firebase UID or normalized phone number.
     """
+    is_phone = bool(re.match(r"^\+?[0-9\s\-]+$", str(identifier or phone or "")) or (phone and not email))
+    normalized_phone = None
+    clean_email = None
+
+    if is_phone:
+        valid_p, norm_p, _ = normalize_indian_phone(phone or identifier)
+        if valid_p:
+            normalized_phone = norm_p
+        else:
+            normalized_phone = phone or identifier
+    elif identifier and "@" in str(identifier):
+        clean_email = str(identifier).strip().lower()
+
+    if email and "@" in str(email):
+        clean_email = str(email).strip().lower()
+
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
     try:
         from supabase_client import get_supabase
         client = get_supabase(admin=True)
 
-        is_phone = bool(re.match(r"^\+?[0-9\s\-]+$", identifier) or (phone and not email))
-        normalized_phone = None
-        clean_email = None
-
-        if is_phone:
-            valid_p, norm_p, _ = normalize_indian_phone(phone or identifier)
-            if valid_p:
-                normalized_phone = norm_p
-        elif "@" in identifier:
-            clean_email = identifier.strip().lower()
-
-        if email and "@" in email:
-            clean_email = email.strip().lower()
-
-        # Check existing by normalized phone or email
         existing_user = None
-        if normalized_phone:
+
+        # 1. Match by firebase_uid first (highest trust stable identifier)
+        if firebase_uid:
+            try:
+                res = client.table("users").select("*").eq("firebase_uid", firebase_uid).limit(1).execute()
+                if res and res.data and len(res.data) > 0:
+                    existing_user = res.data[0]
+            except Exception:
+                pass
+
+        # 2. Match by normalized phone
+        if not existing_user and normalized_phone:
             try:
                 res = client.table("users").select("*").eq("phone_normalized", normalized_phone).limit(1).execute()
                 if res and res.data and len(res.data) > 0:
@@ -565,6 +631,7 @@ def sync_user_to_supabase(
             except Exception:
                 pass
 
+        # 3. Match by email
         if not existing_user and clean_email:
             try:
                 res = client.table("users").select("*").eq("email", clean_email).limit(1).execute()
@@ -572,8 +639,6 @@ def sync_user_to_supabase(
                     existing_user = res.data[0]
             except Exception:
                 pass
-
-        now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         if existing_user:
             user_id = existing_user.get("id")
@@ -588,6 +653,8 @@ def sync_user_to_supabase(
             if normalized_phone and not existing_user.get("phone_normalized"):
                 update_data["phone_normalized"] = normalized_phone
                 update_data["phone"] = normalized_phone
+            if firebase_uid and not existing_user.get("firebase_uid"):
+                update_data["firebase_uid"] = firebase_uid
 
             try:
                 client.table("users").update(update_data).eq("id", user_id).execute()
@@ -597,13 +664,15 @@ def sync_user_to_supabase(
             return True, f"User synced (id: {user_id})", existing_user
 
         # New user insert
-        display_name = name or (normalized_phone[-4:] if normalized_phone else clean_email.split("@")[0].capitalize())
+        display_name = name or (normalized_phone[-4:] if normalized_phone else (clean_email.split("@")[0].capitalize() if clean_email else "Customer"))
         new_row = {
             "name": display_name,
             "platform": platform,
             "created_at": now_iso,
             "last_login": now_iso
         }
+        if firebase_uid:
+            new_row["firebase_uid"] = firebase_uid
         if normalized_phone:
             new_row["phone_normalized"] = normalized_phone
             new_row["phone"] = normalized_phone
@@ -615,14 +684,45 @@ def sync_user_to_supabase(
         return True, "User registered successfully in Supabase", created_user
     except Exception as e:
         if os.environ.get("TEST_MODE") == "1" or APP_ENV == "development":
+            existing = None
+            if firebase_uid and firebase_uid in TEST_USERS_STORE_BY_UID:
+                existing = TEST_USERS_STORE_BY_UID[firebase_uid]
+            elif normalized_phone and normalized_phone in TEST_USERS_STORE_BY_PHONE:
+                existing = TEST_USERS_STORE_BY_PHONE[normalized_phone]
+            elif clean_email and clean_email in TEST_USERS_STORE_BY_EMAIL:
+                existing = TEST_USERS_STORE_BY_EMAIL[clean_email]
+
+            if existing:
+                if name and not existing.get("name"):
+                    existing["name"] = name
+                if firebase_uid and not existing.get("firebase_uid"):
+                    existing["firebase_uid"] = firebase_uid
+                    TEST_USERS_STORE_BY_UID[firebase_uid] = existing
+                if normalized_phone and not existing.get("phone_normalized"):
+                    existing["phone_normalized"] = normalized_phone
+                    existing["phone"] = normalized_phone
+                    TEST_USERS_STORE_BY_PHONE[normalized_phone] = existing
+                existing["last_login"] = now_iso
+                return True, f"Dev/Test user matched: {e}", existing
+
+            user_id = f"test_usr_{secrets.token_hex(6)}"
             fallback_user = {
-                "id": f"test_{int(time.time())}",
+                "id": user_id,
                 "name": name or (normalized_phone[-4:] if normalized_phone else "Customer"),
                 "phone_normalized": normalized_phone,
                 "phone": normalized_phone,
                 "email": clean_email,
-                "platform": platform
+                "firebase_uid": firebase_uid,
+                "platform": platform,
+                "created_at": now_iso,
+                "last_login": now_iso
             }
+            if firebase_uid:
+                TEST_USERS_STORE_BY_UID[firebase_uid] = fallback_user
+            if normalized_phone:
+                TEST_USERS_STORE_BY_PHONE[normalized_phone] = fallback_user
+            if clean_email:
+                TEST_USERS_STORE_BY_EMAIL[clean_email] = fallback_user
             return True, f"Dev/Test fallback: {e}", fallback_user
         return False, str(e), None
 
@@ -1181,42 +1281,82 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         # ── ROUTE 6B: FIREBASE PHONE AUTH SYNCHRONIZATION ──
         elif req_path == "/api/auth/firebase-phone":
-            phone_raw = payload.get("phone") or payload.get("mobileNumber")
+            auth_header = self.headers.get("Authorization", "")
+            id_token = payload.get("idToken") or payload.get("token") or (auth_header[7:].strip() if auth_header.startswith("Bearer ") else None)
+
+            if not id_token:
+                self._set_cors_headers(401)
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": "Unauthorized: Valid Firebase ID token is required for mobile authentication."
+                }).encode("utf-8"))
+                return
+
+            # Cryptographically verify the token with Firebase Admin
+            valid_token, decoded_token, token_err = verify_firebase_id_token(id_token)
+            if not valid_token or not decoded_token:
+                self._set_cors_headers(401)
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": f"Authentication failed: {token_err}"
+                }).encode("utf-8"))
+                return
+
+            # SECURITY: Extract phone and UID DIRECTLY from verified token - NEVER trust client-provided phone!
+            verified_phone = decoded_token.get("phone_number")
+            firebase_uid = decoded_token.get("uid")
+
+            if not verified_phone:
+                identities = decoded_token.get("firebase", {}).get("identities", {})
+                if "phone" in identities and identities["phone"]:
+                    verified_phone = identities["phone"][0]
+
+            if not verified_phone:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": "The verified Firebase token does not contain a verified phone number."
+                }).encode("utf-8"))
+                return
+
+            valid_p, norm_p, _ = normalize_indian_phone(verified_phone)
+            if not valid_p:
+                norm_p = verified_phone
+
             name_raw = str(payload.get("name", "")).strip()
             email_raw = str(payload.get("email", "")).strip().lower()
-
-            if not phone_raw:
-                self._set_cors_headers(400)
-                self.wfile.write(json.dumps({"success": False, "error": "Phone number is required"}).encode("utf-8"))
-                return
-
-            valid_p, norm_p, p_err = normalize_indian_phone(str(phone_raw))
-            if not valid_p:
-                self._set_cors_headers(400)
-                self.wfile.write(json.dumps({"success": False, "error": p_err}).encode("utf-8"))
-                return
+            if not email_raw and decoded_token.get("email"):
+                email_raw = decoded_token.get("email")
 
             # Check if customer already exists in Supabase users table (duplicate prevention)
             existing_user = None
             try:
                 from supabase_client import get_supabase
                 client = get_supabase(admin=True)
-                res = client.table("users").select("*").eq("phone_normalized", norm_p).limit(1).execute()
-                if res and res.data and len(res.data) > 0:
-                    existing_user = res.data[0]
+                if firebase_uid:
+                    res = client.table("users").select("*").eq("firebase_uid", firebase_uid).limit(1).execute()
+                    if res and res.data and len(res.data) > 0:
+                        existing_user = res.data[0]
+                if not existing_user and norm_p:
+                    res = client.table("users").select("*").eq("phone_normalized", norm_p).limit(1).execute()
+                    if res and res.data and len(res.data) > 0:
+                        existing_user = res.data[0]
             except Exception as e:
                 print(f"[Supabase lookup note] {e}")
 
             session_token = secrets.token_hex(32)
 
             if existing_user:
-                # Existing customer - update last_login
+                # Existing customer - update last_login and firebase_uid if missing
                 try:
                     from supabase_client import get_supabase
                     client = get_supabase(admin=True)
-                    client.table("users").update({
+                    update_fields = {
                         "last_login": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    }).eq("id", existing_user["id"]).execute()
+                    }
+                    if firebase_uid and not existing_user.get("firebase_uid"):
+                        update_fields["firebase_uid"] = firebase_uid
+                    client.table("users").update(update_fields).eq("id", existing_user["id"]).execute()
                 except Exception:
                     pass
 
@@ -1230,7 +1370,8 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                         "id": existing_user["id"],
                         "name": existing_user.get("name") or norm_p[-4:],
                         "phone": existing_user.get("phone_normalized") or norm_p,
-                        "email": existing_user.get("email")
+                        "email": existing_user.get("email"),
+                        "firebase_uid": firebase_uid
                     }
                 }).encode("utf-8"))
                 return
@@ -1243,7 +1384,8 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                         name=name_raw,
                         platform="Firebase Phone Auth",
                         phone=norm_p,
-                        email=email_raw if email_raw and "@" in email_raw else None
+                        email=email_raw if email_raw and "@" in email_raw else None,
+                        firebase_uid=firebase_uid
                     )
                     user_id = (user_row or {}).get("id") or str(secrets.token_hex(8))
 
@@ -1257,12 +1399,19 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                             "id": user_id,
                             "name": name_raw,
                             "phone": norm_p,
-                            "email": email_raw if email_raw and "@" in email_raw else None
+                            "email": email_raw if email_raw and "@" in email_raw else None,
+                            "firebase_uid": firebase_uid
                         }
                     }).encode("utf-8"))
                     return
                 else:
                     reg_token = secrets.token_hex(24)
+                    REGISTRATION_SESSIONS[reg_token] = {
+                        "identifier": norm_p,
+                        "phone": norm_p,
+                        "firebase_uid": firebase_uid,
+                        "expires_at": time.time() + 900
+                    }
                     self._set_cors_headers(200)
                     self.wfile.write(json.dumps({
                         "success": True,
@@ -1271,14 +1420,14 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                         "token": reg_token,
                         "identifier": norm_p,
                         "phone": norm_p,
+                        "firebase_uid": firebase_uid,
                         "isPhone": True
                     }).encode("utf-8"))
                     return
 
         # ── ROUTE 7: COMPLETE REGISTRATION (Set Name for New OTP User) ──
         elif req_path == "/api/register/complete":
-            phone_raw = payload.get("phone") or payload.get("identifier")
-            email_raw = payload.get("email")
+            verified_token = payload.get("verifiedToken") or payload.get("token")
             name = str(payload.get("name", "")).strip()
 
             if not name:
@@ -1286,21 +1435,35 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": "Your name is required to complete registration."}).encode("utf-8"))
                 return
 
-            identifier = None
-            is_phone = False
-            if phone_raw and re.match(r"^\+?[0-9\s\-]+$", str(phone_raw)):
-                valid_p, norm_p, p_err = normalize_indian_phone(str(phone_raw))
-                if not valid_p:
-                    self._set_cors_headers(400)
-                    self.wfile.write(json.dumps({"success": False, "error": p_err}).encode("utf-8"))
+            reg_session = REGISTRATION_SESSIONS.get(verified_token) if verified_token else None
+            phone_raw = payload.get("phone") or payload.get("identifier")
+            email_raw = payload.get("email")
+            firebase_uid = None
+
+            if reg_session:
+                if time.time() > reg_session.get("expires_at", 0):
+                    REGISTRATION_SESSIONS.pop(verified_token, None)
+                    self._set_cors_headers(401)
+                    self.wfile.write(json.dumps({"success": False, "error": "Registration session expired. Please verify your phone again."}).encode("utf-8"))
                     return
-                identifier = norm_p
+                identifier = reg_session.get("identifier") or reg_session.get("phone")
+                phone_raw = reg_session.get("phone")
+                firebase_uid = reg_session.get("firebase_uid")
                 is_phone = True
-            elif email_raw and "@" in str(email_raw):
-                identifier = str(email_raw).strip().lower()
+                REGISTRATION_SESSIONS.pop(verified_token, None)
+            elif verified_token:
+                valid_t, dec_t, _ = verify_firebase_id_token(verified_token)
+                if valid_t and dec_t:
+                    identifier = dec_t.get("phone_number")
+                    firebase_uid = dec_t.get("uid")
+                    is_phone = True
+                else:
+                    self._set_cors_headers(401)
+                    self.wfile.write(json.dumps({"success": False, "error": "Invalid or expired registration token."}).encode("utf-8"))
+                    return
             else:
-                self._set_cors_headers(400)
-                self.wfile.write(json.dumps({"success": False, "error": "Valid phone or email identifier required."}).encode("utf-8"))
+                self._set_cors_headers(401)
+                self.wfile.write(json.dumps({"success": False, "error": "Verification token required to complete registration."}).encode("utf-8"))
                 return
 
             synced, note, user_row = sync_user_to_supabase(
@@ -1308,7 +1471,8 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 name=name,
                 platform="Mobile OTP Registration" if is_phone else "Email OTP Registration",
                 phone=identifier if is_phone else None,
-                email=str(email_raw).strip().lower() if email_raw and "@" in str(email_raw) else (identifier if not is_phone else None)
+                email=str(email_raw).strip().lower() if email_raw and "@" in str(email_raw) else None,
+                firebase_uid=firebase_uid
             )
 
             session_token = secrets.token_hex(32)
@@ -1323,7 +1487,8 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                     "id": user_id,
                     "name": name,
                     "phone": identifier if is_phone else None,
-                    "email": (user_row or {}).get("email")
+                    "email": (user_row or {}).get("email"),
+                    "firebase_uid": firebase_uid
                 }
             }).encode("utf-8"))
             return
@@ -1419,30 +1584,39 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 otp_target = target_phone or target_email
                 is_phone = bool(target_phone)
 
-                otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
-                store_otp_record(otp_target, otp_code, purpose="login_password_step2")
-
                 if is_phone:
-                    SMS_PROVIDER_INSTANCE.send_otp(target_phone, otp_code, purpose="login")
                     masked = f"{target_phone[:6]} XXXXX"
-                    msg = f"Credentials verified. 6-digit OTP sent to your registered mobile {masked}."
+                    self._set_cors_headers(200)
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "requiresOtp": True,
+                        "requiresFirebaseOtp": True,
+                        "phone": target_phone,
+                        "identifier": target_phone,
+                        "maskedTarget": masked,
+                        "message": f"Credentials verified. Please complete Firebase Mobile OTP verification for {masked}."
+                    }).encode("utf-8"))
+                    return
                 else:
+                    otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
+                    store_otp_record(otp_target, otp_code, purpose="login_password_step2")
                     send_real_email(target_email, otp_code, mode="login")
                     parts = target_email.split("@")
                     masked = f"{parts[0][:2]}***@{parts[1]}"
                     msg = f"Credentials verified. 6-digit OTP sent to your registered email {masked}."
 
-                self._set_cors_headers(200)
-                self.wfile.write(json.dumps({
-                    "success": True,
-                    "requiresOtp": True,
-                    "phone": target_phone,
-                    "email": target_email,
-                    "identifier": otp_target,
-                    "maskedTarget": masked,
-                    "message": msg
-                }).encode("utf-8"))
-                return
+                    self._set_cors_headers(200)
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "requiresOtp": True,
+                        "requiresFirebaseOtp": False,
+                        "phone": None,
+                        "email": target_email,
+                        "identifier": otp_target,
+                        "maskedTarget": masked,
+                        "message": msg
+                    }).encode("utf-8"))
+                    return
             except Exception as e:
                 self._set_cors_headers(500)
                 self.wfile.write(json.dumps({"success": False, "error": f"Authentication check error: {str(e)}"}).encode("utf-8"))

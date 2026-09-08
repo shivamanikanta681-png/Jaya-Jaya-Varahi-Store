@@ -13,6 +13,7 @@
 -- 1. Users / Profiles Table (Store Customer Accounts)
 CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    firebase_uid TEXT UNIQUE,
     phone_normalized TEXT UNIQUE,
     phone TEXT,
     email TEXT UNIQUE,
@@ -25,9 +26,12 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 
 -- Migration helpers if columns don't exist in active database:
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS firebase_uid TEXT UNIQUE;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone_normalized TEXT UNIQUE;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE public.users ALTER COLUMN email DROP NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON public.users (firebase_uid);
+CREATE INDEX IF NOT EXISTS idx_users_phone_normalized ON public.users (phone_normalized);
 
 -- Note: The store utilizes a secure, server-side Email OTP verification system.
 -- Drop any legacy auth.users trigger dependency if previously applied:
