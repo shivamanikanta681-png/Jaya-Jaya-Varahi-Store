@@ -4,7 +4,7 @@
   "description": "",
   "main": "SignUp_LogIn_Form.js",
   "scripts": {
-    "build": "node --check SignUp_LogIn_Form.js && eslint .",
+    "build": "node --check SignUp_LogIn_Form.js && node --check firebaseClient.js && node --check supabaseClient.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "python -m unittest discover -s tests -p \"test_*.py\""
