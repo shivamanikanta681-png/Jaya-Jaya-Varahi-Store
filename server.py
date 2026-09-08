@@ -20,6 +20,8 @@ import http.server
 import socketserver
 import json
 import os
+import re
+import hashlib
 import secrets
 import time
 import smtplib
@@ -51,12 +53,37 @@ ENV = load_env()
 # Environment settings
 APP_ENV = os.environ.get("APP_ENV", ENV.get("APP_ENV", "development")).strip().lower()
 PORT = int(os.environ.get("PORT", ENV.get("PORT", 8000)))
-ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", ENV.get("ALLOWED_ORIGIN", "*")).strip()
 
-# Admin credentials
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ENV.get("ADMIN_PASSWORD", "varahi123")).strip()
-if APP_ENV == "production" and (not ADMIN_PASSWORD or ADMIN_PASSWORD == "varahi123"):
-    raise RuntimeError("FATAL: In production mode, you must set a secure, non-default ADMIN_PASSWORD in your environment or .env file.")
+# CORS Origin Allowlist Configuration
+ALLOWED_ORIGIN_CONFIG = os.environ.get("ALLOWED_ORIGIN", ENV.get("ALLOWED_ORIGIN", "")).strip()
+ALLOWED_ORIGINS = [o.strip() for o in ALLOWED_ORIGIN_CONFIG.split(",") if o.strip() and o.strip() != "*"]
+if not ALLOWED_ORIGINS:
+    if APP_ENV == "production":
+        ALLOWED_ORIGINS = ["https://jaya-jaya-varahi-shop.web.app", "https://jayajayavarahi.com"]
+    else:
+        ALLOWED_ORIGINS = ["http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:3000", "http://localhost:5173"]
+
+def get_cors_origin(req_origin: Optional[str]) -> str:
+    if not req_origin:
+        return ALLOWED_ORIGINS[0]
+    clean_origin = req_origin.strip().rstrip("/")
+    for allowed in ALLOWED_ORIGINS:
+        if clean_origin == allowed.rstrip("/"):
+            return clean_origin
+    if APP_ENV != "production" and ("localhost" in clean_origin or "127.0.0.1" in clean_origin):
+        return clean_origin
+    return ALLOWED_ORIGINS[0]
+
+# Admin credentials (Must be set across all operational environments; 'varahi123' strictly forbidden)
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ENV.get("ADMIN_PASSWORD", "")).strip()
+if not ADMIN_PASSWORD or ADMIN_PASSWORD == "varahi123":
+    if os.environ.get("TEST_MODE") == "1":
+        ADMIN_PASSWORD = "test_admin_secure_pw_123"
+    else:
+        raise RuntimeError(
+            "FATAL: A secure, non-default ADMIN_PASSWORD must be configured in your .env file or environment. "
+            "Default 'varahi123' is rejected in all operational modes."
+        )
 
 # SMTP credentials
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL", ENV.get("SMTP_EMAIL", "")).strip()
@@ -85,6 +112,65 @@ Store Information:
 OTP_CACHE: Dict[str, Dict[str, Any]] = {}
 OTP_RATE_LIMITS: Dict[str, list] = {}  # key -> [timestamps]
 ADMIN_SESSIONS: Dict[str, float] = {}  # token -> expires_at
+
+# ── Cryptographic Hashing Helpers ──
+def hash_otp(email: str, otp: str) -> str:
+    """Computes a SHA-256 digest of normalized email and OTP."""
+    return hashlib.sha256(f"{email.lower().strip()}:{otp.strip()}".encode("utf-8")).hexdigest()
+
+def hash_password(password: str) -> str:
+    """Computes salted PBKDF2-HMAC-SHA256 password hash."""
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000)
+    return f"{salt}${h.hex()}"
+
+def verify_password(stored: str, provided: str) -> bool:
+    """Safely verifies a provided password against stored salted hash."""
+    try:
+        salt, h = stored.split("$", 1)
+        expected = hashlib.pbkdf2_hmac("sha256", provided.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+        return secrets.compare_digest(h, expected)
+    except Exception:
+        return False
+
+def validate_admin_product(product: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
+    """Validates admin product CRUD payload fields, lengths, and types."""
+    if not isinstance(product, dict):
+        return False, {}, "Product payload must be an object"
+    prod_id = str(product.get("id", "")).strip()
+    name = str(product.get("name", "")).strip()
+    category = str(product.get("category", "")).strip()
+    if not prod_id or len(prod_id) > 64 or not re.match(r"^[a-zA-Z0-9_\-]+$", prod_id):
+        return False, {}, "Product ID is required and must be alphanumeric with dashes/underscores (max 64 chars)"
+    if not name or len(name) > 200:
+        return False, {}, "Product name is required (1 to 200 characters)"
+    if not category or len(category) > 64:
+        return False, {}, "Product category is required"
+
+    try:
+        price = float(product.get("price", 0))
+        if price < 0 or price > 1_000_000:
+            return False, {}, "Price must be a non-negative number under 1,000,000"
+    except (ValueError, TypeError):
+        return False, {}, "Price must be a valid numeric value"
+
+    image = str(product.get("image", "images/logo.png")).strip()
+    if len(image) > 500:
+        return False, {}, "Image path/URL exceeds 500 characters"
+
+    description = str(product.get("description", "")).strip()
+    if len(description) > 2000:
+        return False, {}, "Description cannot exceed 2000 characters"
+
+    clean_product = {
+        "id": prod_id,
+        "name": name,
+        "category": category,
+        "price": round(price, 2),
+        "image": image,
+        "description": description
+    }
+    return True, clean_product, ""
 
 def is_rate_limited(key: str, max_requests: int = 3, window_seconds: int = 600, cooldown_seconds: int = 60) -> Tuple[bool, str]:
     """Checks per-key sliding window rate limit and cooldown."""
@@ -265,18 +351,32 @@ def calculate_authoritative_order(order_payload: Dict[str, Any]) -> Tuple[bool, 
     discount_multiplier = max(0.0, 1.0 - (day_discount / 100.0))
 
     for it in items_raw:
-        prod_id = str(it.get("productId") or it.get("id") or "")
-        qty = max(1, int(it.get("qty") or it.get("quantity") or 1))
+        if not isinstance(it, dict):
+            return False, {}, "Each item in the order must be an object"
+        prod_id = str(it.get("productId") or it.get("id") or "").strip()
+        if not prod_id:
+            return False, {}, "Order item is missing a product ID"
+
+        raw_qty = it.get("qty") if it.get("qty") is not None else it.get("quantity")
+        try:
+            qty = int(raw_qty)
+        except (ValueError, TypeError):
+            return False, {}, f"Invalid quantity for item {prod_id}. Must be an integer."
+
+        if qty < 1 or qty > 100:
+            return False, {}, f"Invalid quantity ({qty}) for item {prod_id}. Must be between 1 and 100."
+
+        # Strictly verify product ID against authoritative catalog (no client price fallbacks)
         matched = catalog_map.get(prod_id)
         if not matched:
-            # Fallback if product ID not in catalog
-            base_price = float(it.get("price") or 500.0)
-            p_name = it.get("name") or f"Product {prod_id}"
-        else:
-            base_price = float(matched.get("price") or 500.0)
-            p_name = matched.get("name")
+            return False, {}, f"Invalid product ID '{prod_id}'. Product does not exist in store catalog."
 
-        item_sub = base_price * qty
+        base_price = float(matched.get("price") or 0.0)
+        if base_price <= 0:
+            return False, {}, f"Authoritative price for item {prod_id} is invalid."
+        p_name = matched.get("name") or f"Product {prod_id}"
+
+        item_sub = round(base_price * qty, 2)
         subtotal += item_sub
         calculated_items.append({
             "productId": prod_id,
@@ -341,10 +441,12 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def _set_cors_headers(self, status: int = 200, content_type: str = "application/json"):
         self.send_response(status)
-        origin = ALLOWED_ORIGIN if ALLOWED_ORIGIN != "*" else "*"
-        self.send_header("Access-Control-Allow-Origin", origin)
+        req_origin = self.headers.get("Origin")
+        allowed_origin = get_cors_origin(req_origin)
+        self.send_header("Access-Control-Allow-Origin", allowed_origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-token")
+        self.send_header("Vary", "Origin")
         self.send_header("Content-Type", content_type)
         self.end_headers()
 
@@ -507,11 +609,20 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 from supabase_client import get_supabase
                 client = get_supabase(admin=True)
                 if action == "delete":
-                    prod_id = payload.get("id") or product.get("id")
+                    prod_id = str(payload.get("id") or product.get("id") or "").strip()
+                    if not prod_id:
+                        self._set_cors_headers(400)
+                        self.wfile.write(json.dumps({"success": False, "error": "Product ID is required for deletion"}).encode("utf-8"))
+                        return
                     client.table("products").delete().eq("id", prod_id).execute()
                     msg = f"Product {prod_id} deleted successfully"
                 else:
-                    client.table("products").upsert(product).execute()
+                    valid, clean_prod, err = validate_admin_product(product)
+                    if not valid:
+                        self._set_cors_headers(400)
+                        self.wfile.write(json.dumps({"success": False, "error": err}).encode("utf-8"))
+                        return
+                    client.table("products").upsert(clean_prod).execute()
                     msg = "Product saved successfully"
 
                 self._set_cors_headers(200)
@@ -521,7 +632,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": f"Product update error: {str(e)}"}).encode("utf-8"))
             return
 
-        # ── ROUTE 5: SEND OTP (Cryptographic & Rate Limited) ──
+        # ── ROUTE 5: SEND OTP (Cryptographic, Hashed & Rate Limited) ──
         elif req_path == "/api/send-otp":
             email = payload.get("email", "").strip().lower()
             mode = payload.get("mode", "reset")
@@ -549,8 +660,9 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
             expires_at = time.time() + 300  # 5 minutes expiry
 
+            # Store only hashed OTP in cache for cryptographic security
             OTP_CACHE[email] = {
-                "otp": otp_code,
+                "otp_hash": hash_otp(email, otp_code),
                 "expires_at": expires_at,
                 "attempts": 0,
                 "verified": False,
@@ -560,7 +672,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             email_sent, status_note = send_real_email(email, otp_code, mode)
 
             if APP_ENV == "development":
-                print(f">> [OTP Dev Mode] Code for {email}: {otp_code} (SMTP active: {email_sent})")
+                print(f">> [OTP Dev Mode] Verification code generated for {email} (SMTP active: {email_sent})")
             else:
                 print(f">> [OTP] Verification request processed for {email} (SMTP active: {email_sent})")
 
@@ -578,7 +690,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "hasSmtpConfigured": email_sent
             }
 
-            # Only return devOtp in explicit development mode when SMTP is inactive
+            # In dev mode without SMTP, deliver code for testing
             if APP_ENV == "development" and not email_sent:
                 response_data["devOtp"] = otp_code
 
@@ -609,15 +721,19 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": "Too many failed attempts. Please request a new code."}).encode("utf-8"))
                 return
 
-            if entered_otp == record["otp"]:
+            # Compare SHA-256 hash of entered OTP
+            if hash_otp(email, entered_otp) == record["otp_hash"]:
                 record["verified"] = True
+                verification_token = secrets.token_hex(24)
+                record["verify_token"] = verification_token
                 sync_user_to_supabase(email, platform="Email OTP Verified")
                 self._set_cors_headers(200)
                 self.wfile.write(json.dumps({
                     "success": True,
                     "verified": True,
                     "message": "OTP verified successfully!",
-                    "email": email
+                    "email": email,
+                    "token": verification_token
                 }).encode("utf-8"))
                 return
             else:
@@ -637,7 +753,8 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             new_password = payload.get("newPassword", "").strip()
 
             record = OTP_CACHE.get(email)
-            if not record or (not record.get("verified") and record.get("otp") != entered_otp):
+            otp_valid = record and (record.get("verified") or (entered_otp and record.get("otp_hash") == hash_otp(email, entered_otp)))
+            if not otp_valid:
                 self._set_cors_headers(403)
                 self.wfile.write(json.dumps({"success": False, "error": "Valid OTP verification required before resetting password."}).encode("utf-8"))
                 return
@@ -648,18 +765,82 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             OTP_CACHE.pop(email, None)
-            sync_user_to_supabase(email, platform="Password Reset Completed")
+            pwd_hash = hash_password(new_password)
+            updated_db = False
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                res = client.table("users").update({"password_hash": pwd_hash, "platform": "Password Reset"}).eq("email", email).execute()
+                if res.data and len(res.data) > 0:
+                    updated_db = True
+                else:
+                    client.table("users").insert({
+                        "email": email,
+                        "name": email.split("@")[0].capitalize(),
+                        "password_hash": pwd_hash,
+                        "platform": "Password Reset"
+                    }).execute()
+                    updated_db = True
+            except Exception as db_err:
+                print(f"[Password Reset] DB update note: {db_err}")
 
             self._set_cors_headers(200)
             self.wfile.write(json.dumps({
                 "success": True,
                 "message": "Password reset successfully! You can now log in with your new password.",
-                "email": email
+                "email": email,
+                "persisted": updated_db
             }).encode("utf-8"))
             return
 
-        # ── ROUTE 8: USER SYNC / LOGIN ──
-        elif req_path == "/api/login":
+        # ── ROUTE 8: PASSWORD AUTHENTICATION ──
+        elif req_path == "/api/login/password":
+            email = payload.get("email", "").strip().lower()
+            password = payload.get("password", "").strip()
+
+            if not email or not password:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": "Email and password are required"}).encode("utf-8"))
+                return
+
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                res = client.table("users").select("id, email, name, password_hash").eq("email", email).maybe_single().execute()
+                user_row = res.data if res else None
+
+                if not user_row or not user_row.get("password_hash"):
+                    self._set_cors_headers(401)
+                    self.wfile.write(json.dumps({"success": False, "error": "Invalid email or password. Use Email OTP to log in or reset your password."}).encode("utf-8"))
+                    return
+
+                if not verify_password(user_row["password_hash"], password):
+                    self._set_cors_headers(401)
+                    self.wfile.write(json.dumps({"success": False, "error": "Invalid email or password"}).encode("utf-8"))
+                    return
+
+                session_token = secrets.token_hex(24)
+                client.table("users").update({"last_login": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}).eq("id", user_row["id"]).execute()
+
+                self._set_cors_headers(200)
+                self.wfile.write(json.dumps({
+                    "success": True,
+                    "message": "Authentication successful",
+                    "user": {
+                        "id": user_row.get("id"),
+                        "email": user_row.get("email"),
+                        "name": user_row.get("name")
+                    },
+                    "token": session_token
+                }).encode("utf-8"))
+                return
+            except Exception as e:
+                self._set_cors_headers(500)
+                self.wfile.write(json.dumps({"success": False, "error": f"Authentication error: {str(e)}"}).encode("utf-8"))
+                return
+
+        # ── ROUTE 9: USER PROFILE SYNC (Profile Data Only, Not Authentication) ──
+        elif req_path in ("/api/users/sync", "/api/login"):
             email = payload.get("email", "").strip().lower()
             name = payload.get("name", "").strip()
             platform = payload.get("platform", "Website Account")
@@ -673,7 +854,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             self._set_cors_headers(200)
             self.wfile.write(json.dumps({
                 "success": True,
-                "message": f"Login synchronized for {email}",
+                "message": f"Profile synchronized for {email}",
                 "email": email,
                 "supabaseSynced": synced,
                 "note": note

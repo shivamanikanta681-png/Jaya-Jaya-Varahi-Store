@@ -799,7 +799,10 @@ class ShopApp {
           const email = username.includes('@') ? username : `${username.toLowerCase().replace(/\s+/g, '')}@gmail.com`;
           const password = passwordInput ? passwordInput.value : '';
 
-          // Authenticate with Supabase Auth if client is available
+          let authSuccess = false;
+          let authErrorMessage = '';
+
+          // 1. Authenticate with Supabase Auth if client is available
           if (window.supabaseClient && password && email) {
             try {
               const { data, error } = await window.supabaseClient.auth.signInWithPassword({
@@ -807,13 +810,36 @@ class ShopApp {
                 password: password
               });
               if (!error && data?.user) {
+                authSuccess = true;
                 console.log('✅ [Supabase Auth] Authenticated user session established:', data.user.id);
               } else if (error) {
-                console.warn('[Supabase Auth] Sign-in note:', error.message);
+                authErrorMessage = error.message;
               }
             } catch (authErr) {
-              console.warn('[Supabase Auth] Sign-in exception:', authErr.message || authErr);
+              authErrorMessage = authErr.message || authErrorMessage;
             }
+          }
+
+          // 2. If not authenticated via Supabase Auth, verify password with backend server
+          if (!authSuccess && password && email) {
+            try {
+              const res = await apiRequest('/api/login/password', {
+                method: 'POST',
+                body: JSON.stringify({ email: email, password: password })
+              });
+              if (res && res.success) {
+                authSuccess = true;
+              } else if (res && res.error) {
+                authErrorMessage = res.error;
+              }
+            } catch (backendErr) {
+              authErrorMessage = backendErr.message || authErrorMessage;
+            }
+          }
+
+          if (!authSuccess) {
+            this.showToast(`⚠️ ${authErrorMessage || 'Invalid login credentials. You can also use "Login via Email OTP" below.'}`, 'error');
+            return;
           }
 
           this.currentUser = {
@@ -2307,17 +2333,14 @@ class ShopApp {
 
   saveProducts() {
     localStorage.setItem('jjv_products', JSON.stringify(this.products));
-    // Save to database if adminToken available or Supabase
+    localStorage.setItem('jjv_products_updated_at', new Date().toISOString());
+    // Persist to database ONLY when an authorized admin token is present
     if (this.adminToken) {
       this.products.forEach(p => {
         apiRequest('/api/admin/products', {
           method: 'POST',
-          body: JSON.stringify({ product: p })
+          body: JSON.stringify({ action: 'upsert', product: p })
         }).catch(err => console.warn('[Admin] Auto-save product note:', err.message || err));
-      });
-    } else if (window.supabaseDataService) {
-      this.products.forEach(p => {
-        window.supabaseDataService.saveProduct(p).catch(() => {});
       });
     }
   }
@@ -2976,53 +2999,38 @@ class ShopApp {
       clearInterval(this.pendingSocialAuth.timerId);
     }
 
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const plat = platform.toLowerCase();
 
-    // Clean and normalize phone number for WhatsApp (+91 India)
-    const rawDigits = String(email || name || '').replace(/[^0-9]/g, '');
-    let waPhone;
-    if (rawDigits.length === 10) {
-      waPhone = '91' + rawDigits;
-    } else if (rawDigits.length === 12 && rawDigits.startsWith('91')) {
-      waPhone = rawDigits;
-    } else if (rawDigits.length > 10 && rawDigits.startsWith('0')) {
-      waPhone = '91' + rawDigits.substring(1);
-    } else if (rawDigits.length >= 10) {
-      waPhone = rawDigits;
-    } else {
-      waPhone = '917569304410';
-    }
-
-    const waMsg = `*Jaya Jaya Varahi Shop - Verification Code*\n\nYour 6-digit security OTP code is: *${otpCode}*\n\n(Valid for 5 minutes. Enter this code on the store screen to complete sign-in. Do not share this code with anyone.)`;
-    const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`;
-
-    // ── DISPATCH OTP TO ACTUAL SELECTED CHANNEL ──
+    // WhatsApp Direct Contact & Ordering Assistant
     if (plat === 'whatsapp') {
-      // Open WhatsApp directly with the pre-filled verification message
-      window.open(waUrl, '_blank');
-      this.showToast(`📲 Opening WhatsApp to send your verification code! Please check your WhatsApp chat.`, 'success');
-    } else if (email && email.includes('@')) {
-      // Dispatched via backend email service with synchronized OTP
-      fetch('/api/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email, mode: 'social_login', otp: otpCode })
-      }).catch(() => {});
-
-      this.showToast(`📩 6-digit security code sent to ${escapeHTML(email)}. Please check your inbox or spam!`, 'success');
-    } else {
-      this.showToast(`🔒 6-digit security code dispatched. Please check your ${escapeHTML(platform)} messages.`, 'info');
+      window.open('https://wa.me/917569304410?text=' + encodeURIComponent('Namaste Jaya Jaya Varahi Shop! I would like to inquire about store products and place an order.'), '_blank');
+      this.showToast('📲 Connected to Jaya Jaya Varahi Store on WhatsApp (+91 75693 04410)!', 'success');
+      if (this.deviceAuthModal) this.deviceAuthModal.classList.add('hidden');
+      return;
     }
+
+    const targetEmail = (email && email.includes('@')) ? email : `${String(name || 'customer').toLowerCase().replace(/\s+/g, '')}@gmail.com`;
+
+    // Request cryptographically secure OTP strictly from backend server
+    apiRequest('/api/send-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email: targetEmail, mode: 'social_login' })
+    }).then(res => {
+      if (res && res.success) {
+        this.showToast(`📩 6-digit verification code sent to ${escapeHTML(targetEmail)}. Please check your inbox!`, 'success');
+      } else {
+        this.showToast((res && res.error) || 'Failed to send verification code', 'error');
+      }
+    }).catch(_err => {
+      this.showToast('Network error sending verification code', 'error');
+    });
 
     this.pendingSocialAuth = {
       name,
-      email,
+      email: targetEmail,
       platform,
       avatarChar,
       color: color || '#4285F4',
-      otpCode,
-      waUrl,
       resendCountdown: 30,
       timerId: null
     };
@@ -3032,27 +3040,11 @@ class ShopApp {
 
   renderSocialOTPScreen() {
     if (!this.deviceAuthContent || !this.pendingSocialAuth) return;
-    const { name, email, platform, waUrl, resendCountdown } = this.pendingSocialAuth;
+    const { name, email, platform, resendCountdown } = this.pendingSocialAuth;
     const plat = platform.toLowerCase();
 
     let titleText = `${platform} 2-Step Verification`;
-    let subText = `Enter the 6-digit verification code sent to your ${platform} account.`;
-    if (plat === 'whatsapp') {
-      titleText = `WhatsApp OTP Verification`;
-      subText = `We've shared your 6-digit security code via WhatsApp.`;
-    } else if (plat === 'google') {
-      titleText = `Google 2-Step Verification`;
-      subText = `Enter the 6-digit code sent to your Google account.`;
-    } else if (plat === 'facebook') {
-      titleText = `Facebook Security Code`;
-      subText = `Enter the 6-digit confirmation code.`;
-    } else if (plat === 'instagram') {
-      titleText = `Instagram Security Check`;
-      subText = `Enter the 6-digit code sent to your registered account.`;
-    } else if (plat === 'apple') {
-      titleText = `Apple ID 2FA Code`;
-      subText = `Enter the 6-digit verification code sent to your Apple device.`;
-    }
+    let subText = `Enter the 6-digit verification code sent to ${escapeHTML(email)}.`;
 
     this.deviceAuthContent.innerHTML = `
       <div class="device-auth-header ${plat}">
@@ -3066,30 +3058,12 @@ class ShopApp {
             <span>Verifying: <strong class="otp-target-highlight">${escapeHTML(email || name)}</strong></span>
           </div>
 
-          ${plat === 'whatsapp' ? `
           <div style="margin: 8px 0 14px; text-align: center;">
-            <a href="${escapeHTML(waUrl)}" target="_blank" class="btn" style="background:#25D366; color:#fff; border-radius:24px; font-size:13px; padding:9px 22px; text-decoration:none; display:inline-flex; align-items:center; gap:8px; font-weight:700; box-shadow:0 3px 10px rgba(37,211,102,0.35);">
-              <i class='bx bxl-whatsapp' style="font-size:20px;"></i> Open WhatsApp for Code
+            <a href="https://mail.google.com/" target="_blank" class="btn" style="background:#ea4335; color:#fff; border-radius:20px; font-size:12px; padding:7px 18px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:600; box-shadow:0 2px 8px rgba(234,67,53,0.3);">
+              <i class='bx bxl-gmail' style="font-size:16px;"></i> Check Inbox for Code
             </a>
-            <div style="font-size:12px; color:#64748b; margin-top:6px;">Your 6-digit verification code was shared to your WhatsApp chat.</div>
+            <div style="font-size:12px; color:#64748b; margin-top:6px;">A secure 6-digit code has been dispatched to your email address.</div>
           </div>
-          ` : (plat === 'google' ? `
-          <div style="margin: 8px 0 14px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
-            <a href="https://mail.google.com/" target="_blank" class="btn" style="background:#ea4335; color:#fff; border-radius:20px; font-size:12px; padding:7px 16px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:600; box-shadow:0 2px 8px rgba(234,67,53,0.3);">
-              <i class='bx bxl-gmail' style="font-size:16px;"></i> Check Gmail Inbox
-            </a>
-            <a href="${escapeHTML(waUrl)}" target="_blank" class="btn" style="background:#25D366; color:#fff; border-radius:20px; font-size:12px; padding:7px 16px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:600; box-shadow:0 2px 8px rgba(37,211,102,0.3);">
-              <i class='bx bxl-whatsapp' style="font-size:16px;"></i> Receive on WhatsApp
-            </a>
-          </div>
-          ` : `
-          <div style="margin: 8px 0 14px; text-align: center;">
-            <a href="${escapeHTML(waUrl)}" target="_blank" class="btn" style="background:#25D366; color:#fff; border-radius:20px; font-size:12.5px; padding:8px 18px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:600; box-shadow:0 2px 8px rgba(37,211,102,0.3);">
-              <i class='bx bxl-whatsapp' style="font-size:16px;"></i> Receive / Open on WhatsApp
-            </a>
-            <div style="font-size:12px; color:#64748b; margin-top:6px;">Check your account messages or WhatsApp for the 6-digit code.</div>
-          </div>
-          `)}
 
           <form id="social-otp-form" onsubmit="window.shopApp.handleSocialOTPSubmit(event)" style="width:100%;">
             <div class="otp-inputs-grid" id="otp-inputs-wrapper">
@@ -3149,17 +3123,21 @@ class ShopApp {
       });
 
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && !input.value && index > 0) {
+        if (e.key === 'Backspace' && !e.target.value && index > 0) {
           inputs[index - 1].focus();
         }
       });
 
       input.addEventListener('paste', (e) => {
         e.preventDefault();
-        const pasteData = (e.clipboardData || window.clipboardData).getData('text');
-        const digits = pasteData.replace(/[^0-9]/g, '').slice(0, 6);
-        if (digits) {
-          this.autoFillOTPCode(digits);
+        const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
+        if (pasted.length >= 6) {
+          inputs.forEach((inp, i) => {
+            inp.value = pasted[i] || '';
+            inp.classList.add('filled');
+            inp.classList.remove('error');
+          });
+          inputs[5].focus();
         }
       });
     });
@@ -3167,63 +3145,40 @@ class ShopApp {
     if (inputs[0]) setTimeout(() => inputs[0].focus(), 150);
   }
 
-  autoFillOTPCode(code) {
-    const inputs = document.querySelectorAll('.otp-digit-input');
-    if (!inputs || inputs.length === 0 || !code) return;
-    const cleanCode = code.toString().trim();
-    inputs.forEach((inp, idx) => {
-      if (idx < cleanCode.length) {
-        inp.value = cleanCode[idx];
-        inp.classList.add('filled');
-        inp.classList.remove('error');
-      }
-    });
-
-    const lastInput = inputs[Math.min(cleanCode.length - 1, inputs.length - 1)];
-    if (lastInput) lastInput.focus();
-
-    const errMsg = document.getElementById('otp-error-message');
-    if (errMsg) errMsg.classList.add('hidden');
-  }
-
   startOTPCountdown() {
-    if (this.pendingSocialAuth && this.pendingSocialAuth.timerId) {
+    if (!this.pendingSocialAuth) return;
+    const timerText = document.getElementById('otp-resend-timer-text');
+    const resendBtn = document.getElementById('otp-resend-btn');
+    const countdownElem = document.getElementById('otp-countdown-num');
+
+    if (this.pendingSocialAuth.timerId) {
       clearInterval(this.pendingSocialAuth.timerId);
     }
-
-    const countdownElem = document.getElementById('otp-countdown-num');
-    const timerTextElem = document.getElementById('otp-resend-timer-text');
-    const resendBtn = document.getElementById('otp-resend-btn');
-
-    if (!this.pendingSocialAuth) return;
-    this.pendingSocialAuth.resendCountdown = 30;
 
     this.pendingSocialAuth.timerId = setInterval(() => {
       if (!this.pendingSocialAuth) return;
       this.pendingSocialAuth.resendCountdown--;
-      
       if (countdownElem) countdownElem.textContent = this.pendingSocialAuth.resendCountdown;
 
       if (this.pendingSocialAuth.resendCountdown <= 0) {
         clearInterval(this.pendingSocialAuth.timerId);
-        if (timerTextElem) timerTextElem.style.display = 'none';
+        if (timerText) timerText.style.display = 'none';
         if (resendBtn) {
-          resendBtn.style.display = 'inline';
           resendBtn.classList.remove('disabled');
+          resendBtn.style.display = 'inline';
         }
       }
     }, 1000);
   }
 
   resendSocialOTP(e) {
-    if (e) e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!this.pendingSocialAuth) return;
     const { name, email, platform, avatarChar, color } = this.pendingSocialAuth;
     this.requestSocialPlatformOTP(name, email, platform, avatarChar, color);
-    this.showToast(`📩 Fresh ${platform} verification code sent!`, 'success');
   }
 
-  handleSocialOTPSubmit(e) {
+  async handleSocialOTPSubmit(e) {
     e.preventDefault();
     if (!this.pendingSocialAuth) return;
 
@@ -3242,29 +3197,43 @@ class ShopApp {
       return;
     }
 
-    if (enteredCode === this.pendingSocialAuth.otpCode) {
-      if (this.pendingSocialAuth.timerId) {
-        clearInterval(this.pendingSocialAuth.timerId);
+    const email = this.pendingSocialAuth.email;
+    try {
+      const res = await apiRequest('/api/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email: email, otp: enteredCode })
+      });
+
+      if (res && res.verified) {
+        if (this.pendingSocialAuth.timerId) {
+          clearInterval(this.pendingSocialAuth.timerId);
+        }
+        const { name, email: authedEmail, platform, avatarChar, color } = this.pendingSocialAuth;
+        this.completeDeviceAuth(name, authedEmail, platform, avatarChar, color);
+      } else {
+        const errorText = (res && res.error) || 'Incorrect verification code. Please check your email and try again.';
+        if (errMsg) {
+          errMsg.textContent = `❌ ${errorText}`;
+          errMsg.classList.remove('hidden');
+        }
+        inputs.forEach(inp => {
+          inp.classList.add('error');
+          inp.value = '';
+          inp.classList.remove('filled');
+        });
+        const grid = document.getElementById('otp-inputs-wrapper');
+        if (grid) {
+          grid.style.animation = 'none';
+          grid.offsetHeight;
+          grid.style.animation = 'shakeError 0.4s ease';
+        }
+        if (inputs[0]) inputs[0].focus();
       }
-      const { name, email, platform, avatarChar, color } = this.pendingSocialAuth;
-      this.completeDeviceAuth(name, email, platform, avatarChar, color);
-    } else {
+    } catch (err) {
       if (errMsg) {
-        errMsg.textContent = `❌ Incorrect verification code. Please check your ${escapeHTML(this.pendingSocialAuth.platform)} message and enter the exact 6 digits.`;
+        errMsg.textContent = `❌ Verification error: ${err.message || 'Server error'}`;
         errMsg.classList.remove('hidden');
       }
-      inputs.forEach(inp => {
-        inp.classList.add('error');
-        inp.value = '';
-        inp.classList.remove('filled');
-      });
-      const grid = document.getElementById('otp-inputs-wrapper');
-      if (grid) {
-        grid.style.animation = 'none';
-        grid.offsetHeight; // trigger reflow
-        grid.style.animation = 'shakeError 0.4s ease';
-      }
-      if (inputs[0]) inputs[0].focus();
     }
   }
 
@@ -4394,8 +4363,8 @@ class ShopApp {
   }
 
   async requestEmailOTP(email, mode = 'reset') {
-    let hasSmtp = false;
-    let devOtp = null;
+    let hasSmtp;
+    let devOtp;
 
     try {
       const resp = await fetch('/api/send-otp', {
@@ -4432,7 +4401,6 @@ class ShopApp {
     this.pendingEmailOtp = {
       email,
       mode,
-      otpCode: devOtp,
       hasSmtp,
       resendCountdown: 60,
       timerId: null,
@@ -4907,7 +4875,7 @@ class ShopApp {
     if (!user || !user.email) return;
     try {
       // Sync through backend API endpoint (single path to prevent duplicate inserts)
-      apiRequest('/api/login', {
+      apiRequest('/api/users/sync', {
         method: 'POST',
         body: JSON.stringify({ email: user.email, name: user.name, platform: user.platform })
       }).then(data => {

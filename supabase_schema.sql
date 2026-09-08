@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE NOT NULL,
     name TEXT,
+    password_hash TEXT,
     platform TEXT DEFAULT 'Website Account',
     phone TEXT,
     address TEXT,
@@ -97,29 +98,32 @@ ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 -- =======================================================
 
 -- 1. Users Policies:
+-- Strictly locked down: anonymous users cannot dump or modify profiles.
+-- Authenticated users can only read/update their own row (auth.uid() = id).
+-- Backend API server (service_role) manages registration and profile sync safely.
 DROP POLICY IF EXISTS "Users read own profile" ON public.users;
 CREATE POLICY "Users read own profile" 
     ON public.users 
     FOR SELECT 
-    TO public, authenticated, anon, service_role 
-    USING (true);
+    TO authenticated, service_role 
+    USING (auth.uid() = id OR auth.role() = 'service_role');
 
 DROP POLICY IF EXISTS "Users update own profile" ON public.users;
 CREATE POLICY "Users update own profile" 
     ON public.users 
     FOR UPDATE 
-    TO public, authenticated, anon, service_role 
-    USING (true)
-    WITH CHECK (true);
+    TO authenticated, service_role 
+    USING (auth.uid() = id OR auth.role() = 'service_role')
+    WITH CHECK (auth.uid() = id OR auth.role() = 'service_role');
 
 DROP POLICY IF EXISTS "Allow user registration" ON public.users;
 DROP POLICY IF EXISTS "Allow authenticated profile creation" ON public.users;
 DROP POLICY IF EXISTS "Allow user profile creation" ON public.users;
-CREATE POLICY "Allow user profile creation" 
+CREATE POLICY "Allow authenticated user creation" 
     ON public.users 
     FOR INSERT 
-    TO public, authenticated, anon, service_role 
-    WITH CHECK (true);
+    TO authenticated, service_role 
+    WITH CHECK (auth.uid() = id OR auth.role() = 'service_role');
 
 -- 2. Orders Policies:
 DROP POLICY IF EXISTS "Public create orders" ON public.orders;
@@ -188,12 +192,24 @@ CREATE POLICY "Admin manage categories"
     WITH CHECK (auth.role() = 'service_role' OR auth.jwt() ->> 'role' = 'admin');
 
 -- 6. Wishlists Policies:
+-- Locked down: anonymous users cannot read or modify any user's wishlist.
+-- Authenticated users can only manage their own wishlist linked to auth.uid().
+-- Backend server (service_role) retains administrative synchronization access.
 DROP POLICY IF EXISTS "Public manage wishlists" ON public.wishlists;
-CREATE POLICY "Public manage wishlists" 
+DROP POLICY IF EXISTS "Users read own wishlist" ON public.wishlists;
+CREATE POLICY "Users read own wishlist" 
+    ON public.wishlists 
+    FOR SELECT 
+    TO authenticated, service_role 
+    USING (auth.uid() = user_id OR auth.role() = 'service_role');
+
+DROP POLICY IF EXISTS "Users modify own wishlist" ON public.wishlists;
+CREATE POLICY "Users modify own wishlist" 
     ON public.wishlists 
     FOR ALL 
-    USING (true) 
-    WITH CHECK (true);
+    TO authenticated, service_role 
+    USING (auth.uid() = user_id OR auth.role() = 'service_role') 
+    WITH CHECK (auth.uid() = user_id OR auth.role() = 'service_role');
 
 -- =======================================================
 -- Initial Seed Data: Store Settings, Categories & Default Products

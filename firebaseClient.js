@@ -81,85 +81,22 @@ const firebaseProductService = {
   },
 
   /**
-   * Adds or updates a product in Cloud Firestore
-   * @param {Object} product
-   * @returns {Promise<boolean>}
+   * Note: Client-side writes are intentionally disabled by firestore.rules (allow write: if false).
+   * Supabase is the unified, authoritative database for catalog CRUD operations.
    */
-  async saveProduct(product) {
-    if (!db || !isFirebaseConfigured() || !product || !product.id) {
-      return false;
-    }
-    try {
-      const prodId = String(product.id);
-      const cleanData = {
-        name: product.name || '',
-        category: product.category || 'toys',
-        price: parseFloat(product.price) || 0,
-        image: product.image || '',
-        description: product.description || '',
-        discount: parseFloat(product.discount) || 0,
-        updatedAt: new Date().toISOString()
-      };
-      await db.collection('products').doc(prodId).set(cleanData, { merge: true });
-      console.log(`🔥 [Firebase] Product "${product.name}" synced to Firestore (ID: ${prodId})`);
-      return true;
-    } catch (err) {
-      console.error('🔥 [Firebase Error] Saving product to Firestore failed:', err);
-      return false;
-    }
+  async saveProduct(_product) {
+    console.warn('ℹ️ [Firebase Notice] Catalog writes are managed authoritatively via Supabase backend. Client Firestore write skipped.');
+    return false;
   },
 
-  /**
-   * Deletes a product from Cloud Firestore
-   * @param {string} productId
-   * @returns {Promise<boolean>}
-   */
-  async deleteProduct(productId) {
-    if (!db || !isFirebaseConfigured() || !productId) {
-      return false;
-    }
-    try {
-      await db.collection('products').doc(String(productId)).delete();
-      console.log(`🔥 [Firebase] Product deleted from Firestore (ID: ${productId})`);
-      return true;
-    } catch (err) {
-      console.error('🔥 [Firebase Error] Deleting product from Firestore failed:', err);
-      return false;
-    }
+  async deleteProduct(_productId) {
+    console.warn('ℹ️ [Firebase Notice] Catalog deletions are managed authoritatively via Supabase backend. Client Firestore delete skipped.');
+    return false;
   },
 
-  /**
-   * Seeds default product catalog into Firestore
-   * @param {Array} defaultProducts
-   * @returns {Promise<{success: boolean, count: number}>}
-   */
-  async seedCatalog(defaultProducts) {
-    if (!db || !isFirebaseConfigured()) {
-      throw new Error("Please configure your Firebase credentials in firebaseClient.js first.");
-    }
-    try {
-      const batch = db.batch();
-      let count = 0;
-      for (const p of defaultProducts) {
-        const ref = db.collection('products').doc(String(p.id));
-        batch.set(ref, {
-          name: p.name,
-          category: p.category,
-          price: parseFloat(p.price) || 0,
-          image: p.image || '',
-          description: p.description || '',
-          discount: parseFloat(p.discount) || 0,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-        count++;
-      }
-      await batch.commit();
-      console.log(`🔥 [Firebase] Successfully seeded ${count} products to Firestore collection!`);
-      return { success: true, count };
-    } catch (err) {
-      console.error('🔥 [Firebase Error] Seeding catalog failed:', err);
-      throw err;
-    }
+  async seedCatalog(_defaultProducts) {
+    console.warn('ℹ️ [Firebase Notice] Catalog seeding is managed authoritatively via Supabase backend.');
+    return { success: false, count: 0, note: 'Direct client-side Firestore writes are restricted by security rules.' };
   }
 };
 
