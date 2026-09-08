@@ -245,26 +245,91 @@ const supabaseDataService = {
     }
   },
 
-  // 5. Customer Profile Sync
+  // 5. Customer Profile Sync (Supports both Phone and Email Accounts)
   async syncUser(user) {
     const client = this.getClient();
-    if (!client || !user || !user.email) return null;
+    if (!client || !user) return null;
+    const phone = user.phone_normalized || user.phone || null;
+    const email = user.email ? String(user.email).toLowerCase().trim() : null;
+    const name = user.name || '';
+    const platform = user.platform || 'Firebase Phone Account';
+    const nowIso = new Date().toISOString();
+
+    if (!phone && !email) return null;
+
     try {
-      const { data, error } = await client
-        .from('users')
-        .upsert([{
-          email: user.email.toLowerCase().trim(),
-          name: user.name || '',
-          platform: user.platform || 'Website Account',
-          phone: user.phone || null,
-          last_login: new Date().toISOString()
-        }], { onConflict: 'email' })
-        .select();
-      if (error) {
-        console.warn("[Supabase] syncUser note:", error.message);
+      // 1. Check existing customer by normalized phone or email to prevent duplicates
+      let existing = null;
+      if (phone) {
+        const { data: phoneMatch } = await client
+          .from('users')
+          .select('*')
+          .eq('phone_normalized', phone)
+          .maybeSingle();
+        if (phoneMatch) existing = phoneMatch;
       }
-      return { data, error };
+
+      if (!existing && email) {
+        const { data: emailMatch } = await client
+          .from('users')
+          .select('*')
+          .eq('email', email)
+          .maybeSingle();
+        if (emailMatch) existing = emailMatch;
+      }
+
+      if (existing) {
+        const updatePayload = {
+          last_login: nowIso,
+          platform: platform
+        };
+        if (name && !existing.name) updatePayload.name = name;
+        if (phone && !existing.phone_normalized) {
+          updatePayload.phone_normalized = phone;
+          updatePayload.phone = phone;
+        }
+        if (email && !existing.email) updatePayload.email = email;
+
+        const { data: updated, error: updateErr } = await client
+          .from('users')
+          .update(updatePayload)
+          .eq('id', existing.id)
+          .select()
+          .maybeSingle();
+
+        if (updateErr) {
+          console.warn("[Supabase] syncUser update note:", updateErr.message);
+        }
+        return { data: updated || { ...existing, ...updatePayload }, error: updateErr };
+      }
+
+      // 2. Insert new customer record
+      const insertPayload = {
+        name: name || (phone ? phone.slice(-4) : (email ? email.split('@')[0] : 'Customer')),
+        platform: platform,
+        last_login: nowIso,
+        created_at: nowIso
+      };
+      if (phone) {
+        insertPayload.phone_normalized = phone;
+        insertPayload.phone = phone;
+      }
+      if (email) {
+        insertPayload.email = email;
+      }
+
+      const { data: inserted, error: insertErr } = await client
+        .from('users')
+        .insert([insertPayload])
+        .select()
+        .maybeSingle();
+
+      if (insertErr) {
+        console.warn("[Supabase] syncUser insert note:", insertErr.message);
+      }
+      return { data: inserted || insertPayload, error: insertErr };
     } catch (err) {
+      console.warn("[Supabase] syncUser exception:", err.message);
       return null;
     }
   }

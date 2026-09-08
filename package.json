@@ -4,6 +4,7 @@
   "description": "",
   "main": "SignUp_LogIn_Form.js",
   "scripts": {
+    "build": "node --check SignUp_LogIn_Form.js && eslint .",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "python -m unittest discover -s tests -p \"test_*.py\""

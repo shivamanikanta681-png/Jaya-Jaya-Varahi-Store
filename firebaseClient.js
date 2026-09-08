@@ -21,6 +21,7 @@ function isFirebaseConfigured() {
 
 let app = null;
 let db = null;
+let auth = null;
 let analytics = null;
 
 try {
@@ -37,6 +38,17 @@ try {
     window.db = db;
     window.firebaseDb = db;
 
+    if (typeof firebase.auth === 'function') {
+      try {
+        auth = firebase.auth();
+        auth.useDeviceLanguage();
+        window.auth = auth;
+        window.firebaseAuth = auth;
+      } catch (authErr) {
+        console.warn('Auth note:', authErr.message);
+      }
+    }
+
     if (typeof firebase.analytics === 'function') {
       try {
         analytics = firebase.analytics();
@@ -46,7 +58,7 @@ try {
       }
     }
 
-    console.log('🔥 Live Firebase App & Firestore initialized for Project "jaya-jaya-varahi-shop"!');
+    console.log('🔥 Live Firebase App, Auth & Firestore initialized for Project "jaya-jaya-varahi-shop"!');
   }
 } catch (err) {
   console.warn('⚠️ Firebase initialization note:', err.message);
@@ -102,7 +114,86 @@ const firebaseProductService = {
 
 window.firebaseProductService = firebaseProductService;
 
+// ── FIREBASE PHONE AUTHENTICATION SERVICE (Development & Testing) ──
+const firebasePhoneAuthService = {
+  isConfigured() {
+    return isFirebaseConfigured() && typeof firebase !== 'undefined' && typeof firebase.auth === 'function';
+  },
+
+  getAuth() {
+    if (auth) return auth;
+    if (typeof firebase !== 'undefined' && typeof firebase.auth === 'function') {
+      auth = firebase.auth();
+      return auth;
+    }
+    return null;
+  },
+
+  /**
+   * Initializes or refreshes the reCAPTCHA verifier attached to containerId
+   */
+  initRecaptcha(containerId = 'recaptcha-container') {
+    const authInstance = this.getAuth();
+    if (!authInstance) {
+      throw new Error('Firebase Authentication is not available. Ensure Firebase scripts are loaded.');
+    }
+
+    if (window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier.clear();
+      } catch (_e) {
+        // ignore clear error
+      }
+      window.recaptchaVerifier = null;
+    }
+
+    const containerEl = document.getElementById(containerId) || document.body;
+
+    window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier(containerEl, {
+      size: 'invisible',
+      callback: () => {
+        // reCAPTCHA solved
+      },
+      'expired-callback': () => {
+        console.warn('[Firebase Recaptcha] Token expired. Will re-initialize on next attempt.');
+      }
+    });
+
+    return window.recaptchaVerifier;
+  },
+
+  /**
+   * Dispatches phone OTP via Firebase Phone Auth.
+   * Seamlessly verifies test phone numbers added in Firebase Console.
+   */
+  async sendPhoneOtp(phoneNumber, verifier) {
+    const authInstance = this.getAuth();
+    if (!authInstance) throw new Error('Firebase Auth is not initialized.');
+    const appVerifier = verifier || window.recaptchaVerifier || this.initRecaptcha();
+    return await authInstance.signInWithPhoneNumber(phoneNumber, appVerifier);
+  },
+
+  /**
+   * Verifies the OTP entered by user using Firebase confirmation result.
+   */
+  async verifyPhoneOtp(confirmationResult, otpCode) {
+    if (!confirmationResult || typeof confirmationResult.confirm !== 'function') {
+      throw new Error('No pending Firebase phone verification session found.');
+    }
+    return await confirmationResult.confirm(otpCode);
+  },
+
+  async signOut() {
+    const authInstance = this.getAuth();
+    if (authInstance && typeof authInstance.signOut === 'function') {
+      return await authInstance.signOut();
+    }
+  }
+};
+
+window.firebasePhoneAuthService = firebasePhoneAuthService;
+
 // Also export if running in Node / bundler environment
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { app, db, analytics, firebaseProductService, firebaseConfig };
+  module.exports = { app, db, auth, analytics, firebaseProductService, firebasePhoneAuthService, firebaseConfig };
 }

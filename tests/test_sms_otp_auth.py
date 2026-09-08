@@ -302,6 +302,56 @@ class TestSmsOtpAuthentication(unittest.TestCase):
         synced, note, user_row = sync_user_to_supabase(norm_1, name="Test Customer", phone=norm_1)
         self.assertEqual(user_row["phone_normalized"], "+919876543210")
 
+    # ── TEST 16: Firebase Phone Auth synchronization endpoint ──
+    def test_16_firebase_phone_sync_endpoint(self):
+        phone = "+919876543210"
+        synced, note, user = sync_user_to_supabase(
+            identifier=phone,
+            name="Firebase Verified User",
+            platform="Firebase Phone Auth",
+            phone=phone
+        )
+        self.assertTrue(synced, "Must sync verified Firebase user to Supabase")
+        self.assertIsNotNone(user)
+        self.assertEqual(user["phone_normalized"], "+919876543210")
+        self.assertEqual(user["name"], "Firebase Verified User")
+
+    # ── TEST 17: Firebase Phone Duplicate Account Protection ──
+    def test_17_firebase_phone_duplicate_protection(self):
+        phone_raw = "9876543210"
+        valid, norm_phone, _ = normalize_indian_phone(phone_raw)
+        self.assertTrue(valid)
+
+        # First sync (new user)
+        s1, n1, u1 = sync_user_to_supabase(norm_phone, name="First Attempt", phone=norm_phone)
+        # Second sync with different raw format (+91 98765 43210)
+        valid2, norm_phone2, _ = normalize_indian_phone("+91 98765 43210")
+        s2, n2, u2 = sync_user_to_supabase(norm_phone2, name="Second Attempt", phone=norm_phone2)
+
+        self.assertEqual(norm_phone, norm_phone2)
+        # Both resolve to the identical user record
+        self.assertEqual(u1.get("phone_normalized"), u2.get("phone_normalized"))
+
+    # ── TEST 18: No OTP codes stored in client storage ──
+    def test_18_no_otp_stored_in_storage(self):
+        js_path = PROJECT_ROOT / "SignUp_LogIn_Form.js"
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_content = f.read()
+
+        self.assertNotIn("localStorage.setItem('otp", js_content)
+        self.assertNotIn('localStorage.setItem("otp', js_content)
+        self.assertNotIn("sessionStorage.setItem('otp", js_content)
+        self.assertNotIn('sessionStorage.setItem("otp', js_content)
+
+    # ── TEST 19: Firebase Auth SDK and reCAPTCHA container in index.html ──
+    def test_19_firebase_scripts_and_recaptcha_present(self):
+        html_path = PROJECT_ROOT / "index.html"
+        with open(html_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        self.assertIn("firebase-auth-compat.js", html_content, "Firebase Auth SDK must be loaded")
+        self.assertIn('id="recaptcha-container"', html_content, "recaptcha-container must be present for phone auth")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1171,11 +1171,107 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self._set_cors_headers(200)
                     self.wfile.write(json.dumps({
                         "success": True,
-                        "isNewUser": true,
+                        "isNewUser": True,
                         "message": "OTP verified successfully. Please provide your name to complete registration.",
                         "token": reg_token,
                         "identifier": identifier,
                         "isPhone": is_phone
+                    }).encode("utf-8"))
+                    return
+
+        # ── ROUTE 6B: FIREBASE PHONE AUTH SYNCHRONIZATION ──
+        elif req_path == "/api/auth/firebase-phone":
+            phone_raw = payload.get("phone") or payload.get("mobileNumber")
+            name_raw = str(payload.get("name", "")).strip()
+            email_raw = str(payload.get("email", "")).strip().lower()
+
+            if not phone_raw:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": "Phone number is required"}).encode("utf-8"))
+                return
+
+            valid_p, norm_p, p_err = normalize_indian_phone(str(phone_raw))
+            if not valid_p:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": p_err}).encode("utf-8"))
+                return
+
+            # Check if customer already exists in Supabase users table (duplicate prevention)
+            existing_user = None
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                res = client.table("users").select("*").eq("phone_normalized", norm_p).limit(1).execute()
+                if res and res.data and len(res.data) > 0:
+                    existing_user = res.data[0]
+            except Exception as e:
+                print(f"[Supabase lookup note] {e}")
+
+            session_token = secrets.token_hex(32)
+
+            if existing_user:
+                # Existing customer - update last_login
+                try:
+                    from supabase_client import get_supabase
+                    client = get_supabase(admin=True)
+                    client.table("users").update({
+                        "last_login": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    }).eq("id", existing_user["id"]).execute()
+                except Exception:
+                    pass
+
+                self._set_cors_headers(200)
+                self.wfile.write(json.dumps({
+                    "success": True,
+                    "isNewUser": False,
+                    "message": "Login successful",
+                    "sessionToken": session_token,
+                    "user": {
+                        "id": existing_user["id"],
+                        "name": existing_user.get("name") or norm_p[-4:],
+                        "phone": existing_user.get("phone_normalized") or norm_p,
+                        "email": existing_user.get("email")
+                    }
+                }).encode("utf-8"))
+                return
+
+            else:
+                # New customer: If name was passed with verify, create profile immediately
+                if name_raw:
+                    synced, note, user_row = sync_user_to_supabase(
+                        identifier=norm_p,
+                        name=name_raw,
+                        platform="Firebase Phone Auth",
+                        phone=norm_p,
+                        email=email_raw if email_raw and "@" in email_raw else None
+                    )
+                    user_id = (user_row or {}).get("id") or str(secrets.token_hex(8))
+
+                    self._set_cors_headers(200)
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "isNewUser": False,
+                        "message": "Account created and logged in successfully!",
+                        "sessionToken": session_token,
+                        "user": {
+                            "id": user_id,
+                            "name": name_raw,
+                            "phone": norm_p,
+                            "email": email_raw if email_raw and "@" in email_raw else None
+                        }
+                    }).encode("utf-8"))
+                    return
+                else:
+                    reg_token = secrets.token_hex(24)
+                    self._set_cors_headers(200)
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "isNewUser": True,
+                        "message": "Phone verified via Firebase. Please provide your name to complete registration.",
+                        "token": reg_token,
+                        "identifier": norm_p,
+                        "phone": norm_p,
+                        "isPhone": True
                     }).encode("utf-8"))
                     return
 
