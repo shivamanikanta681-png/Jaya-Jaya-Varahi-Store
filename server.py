@@ -20,9 +20,18 @@ import http.server
 import socketserver
 import json
 import os
+import sys
 import re
 import hashlib
 import secrets
+
+# Ensure resilient UTF-8 output on Windows console
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 import time
 import smtplib
 import ssl

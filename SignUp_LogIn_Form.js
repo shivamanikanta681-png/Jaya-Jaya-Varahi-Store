@@ -170,7 +170,7 @@ const DAY_THEMES = {
   },
   2: { 
     dayName: "Tuesday", 
-    theme: "Tuesday Treasure", 
+    theme: "Timeless Treasures", 
     quote: "Uncover little joys and timeless treasures crafted just for you.", 
     badge: "Timeless Treasures", 
     icon: "bx-diamond", 
@@ -243,7 +243,7 @@ class ShopApp {
     this.wishlist = safeJSON('jjv_wishlist', []);
     this.userProfile = safeJSON('jjv_user_profile', null);
     this.dayDiscount = Math.max(0, Math.min(100, parseFloat(localStorage.getItem('jjv_day_discount')) || 15));
-    this.specialOfferText = localStorage.getItem('jjv_offer_text') || "🎉 Mega Sale! Enjoy 15% OFF on all Toys, Return Gifts & Kitchenware!";
+    this.specialOfferText = localStorage.getItem('jjv_offer_text') || "";
     this.adminToken = sessionStorage.getItem('jjv_admin_token') || "";
     this.currentCategory = "all";
     this.chatLanguage = "en";
@@ -303,13 +303,6 @@ class ShopApp {
     document.documentElement.style.setProperty('--day-gradient', theme.gradient);
 
     document.body.setAttribute('data-day', theme.dayName.toLowerCase());
-
-    const dayPill = document.getElementById('day-theme-pill');
-    if (dayPill) {
-      dayPill.innerHTML = `<i class='bx ${theme.icon} day-icon-spin'></i> <span>${escapeHTML(theme.theme)}</span>`;
-      dayPill.style.background = theme.pillBg;
-      dayPill.setAttribute('title', `${theme.theme}: "${theme.quote}"`);
-    }
 
     this.highlightTodayTiming(dayIndex);
   }
@@ -1292,21 +1285,14 @@ class ShopApp {
     const todayIndex = new Date().getDay();
     const todayTheme = DAY_THEMES[todayIndex] || DAY_THEMES[1];
 
-    const dayNameDisplay = document.getElementById('day-name-display');
-    const dayThemePill = document.getElementById('day-theme-pill');
-    if (dayNameDisplay) dayNameDisplay.textContent = todayTheme.theme;
-    if (dayThemePill) {
-      dayThemePill.setAttribute('title', `${todayTheme.theme}: "${todayTheme.quote}"`);
-      const icon = dayThemePill.querySelector('i');
-      if (icon) icon.className = `bx ${todayTheme.icon} day-icon-spin`;
+    if (this.bannerDiscountTag) {
+      this.bannerDiscountTag.textContent = `${this.dayDiscount}% OFF`;
     }
-
-    if (this.bannerDiscountTag) this.bannerDiscountTag.textContent = `${this.dayDiscount}% OFF`;
 
     if (this.offerTextDisplay) {
       const isDefaultGeneric = !this.specialOfferText || this.specialOfferText.includes('🎉 Mega Sale!');
       const bannerText = isDefaultGeneric ? `✨ "${todayTheme.quote}"` : this.specialOfferText;
-      this.offerTextDisplay.innerHTML = `${escapeHTML(bannerText)} <span id="banner-discount-tag">${this.dayDiscount}% OFF</span>`;
+      this.offerTextDisplay.textContent = bannerText;
     }
   }
 
