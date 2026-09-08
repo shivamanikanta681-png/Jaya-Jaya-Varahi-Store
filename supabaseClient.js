@@ -1,6 +1,6 @@
 // ==============================================================================
 // Jaya Jaya Varahi Shop - Supabase Client
-// Handles Customer Auth, Orders, Categories, Settings & Wishlists
+// Handles Customer Auth, Products, Orders, Categories, Settings & Wishlists
 // ==============================================================================
 
 const SUPABASE_URL = "https://gftsfdlchvjylpitjbps.supabase.co";
@@ -16,11 +16,10 @@ function initSupabaseClient() {
       if (typeof window !== 'undefined') {
         window.supabaseClient = supabaseClient;
       }
-      console.log("⚡ [Supabase] Client initialized successfully!");
       return supabaseClient;
     }
   } catch (err) {
-    console.warn("Supabase init note:", err.message);
+    console.warn("[Supabase] Initialization note:", err.message);
   }
   return null;
 }
@@ -45,28 +44,20 @@ const supabaseDataService = {
     const client = this.getClient();
     if (!client) return null;
     try {
-      // Try key-value row first
-      const { data: kvData, error: kvError } = await client
+      const { data, error } = await client
         .from('store_settings')
         .select('*')
         .eq('key', 'discount_offers')
         .maybeSingle();
 
-      if (!kvError && kvData && kvData.value) {
-        return kvData.value;
+      if (error && error.code !== 'PGRST116') {
+        console.warn("[Supabase] getStoreSettings query error:", error.message);
+        return null;
       }
-
-      // Try single row with id
-      const { data, error } = await client
-        .from('store_settings')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      return data;
+      if (data && data.value) return data.value;
+      return null;
     } catch (e) {
-      console.warn("Supabase getStoreSettings note:", e.message);
+      console.warn("[Supabase] getStoreSettings error:", e.message);
       return null;
     }
   },
@@ -75,8 +66,7 @@ const supabaseDataService = {
     const client = this.getClient();
     if (!client || !settings) return false;
     try {
-      // Upsert key-value format
-      await client
+      const { error } = await client
         .from('store_settings')
         .upsert([{
           key: 'discount_offers',
@@ -84,10 +74,13 @@ const supabaseDataService = {
           updated_at: new Date().toISOString()
         }], { onConflict: 'key' });
 
-      console.log("✅ [Supabase] Store settings synced!");
+      if (error) {
+        console.warn("[Supabase] saveStoreSettings note:", error.message);
+        return false;
+      }
       return true;
     } catch (e) {
-      console.warn("Supabase saveStoreSettings note:", e.message);
+      console.warn("[Supabase] saveStoreSettings error:", e.message);
       return false;
     }
   },
@@ -101,7 +94,10 @@ const supabaseDataService = {
         .from('categories')
         .select('*')
         .order('builtin', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.warn("[Supabase] getCategories note:", error.message);
+        return null;
+      }
       return data;
     } catch (e) {
       return null;
@@ -121,32 +117,9 @@ const supabaseDataService = {
       const { error } = await client
         .from('categories')
         .upsert(records, { onConflict: 'id' });
-      if (error) throw error;
-      console.log("✅ [Supabase] Categories synced!");
-      return true;
-    } catch (e) {
-      return false;
-    }
-  },
-
-  // 3. Customer Wishlist Sync
-  async syncWishlist(email, wishlistItems) {
-    const client = this.getClient();
-    if (!client || !email) return false;
-    try {
-      const cleanEmail = String(email).toLowerCase().trim();
-      // Sync into users table profile
-      await client
-        .from('users')
-        .upsert({ email: cleanEmail, wishlist: wishlistItems, updated_at: new Date().toISOString() }, { onConflict: 'email' });
-
-      // Also sync into dedicated wishlists table if available
-      if (Array.isArray(wishlistItems) && wishlistItems.length > 0) {
-        const records = wishlistItems.map(prodId => ({
-          user_email: cleanEmail,
-          product_id: String(prodId)
-        }));
-        await client.from('wishlists').upsert(records, { onConflict: 'user_email,product_id' });
+      if (error) {
+        console.warn("[Supabase] saveCategories note:", error.message);
+        return false;
       }
       return true;
     } catch (e) {
@@ -154,7 +127,125 @@ const supabaseDataService = {
     }
   },
 
-  // 4. Customer User Sync
+  // 3. Products Catalog (Unified Source of Truth)
+  async getProducts() {
+    const client = this.getClient();
+    if (!client) return null;
+    try {
+      const { data, error } = await client
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (error) {
+        console.warn("[Supabase] getProducts query note:", error.message);
+        return null;
+      }
+      if (data && data.length > 0) return data;
+      return null;
+    } catch (e) {
+      console.warn("[Supabase] getProducts exception:", e.message);
+      return null;
+    }
+  },
+
+  async saveProduct(product) {
+    const client = this.getClient();
+    if (!client || !product) return false;
+    try {
+      const { error } = await client
+        .from('products')
+        .upsert([product], { onConflict: 'id' });
+      if (error) {
+        console.warn("[Supabase] saveProduct note:", error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  async deleteProduct(productId) {
+    const client = this.getClient();
+    if (!client || !productId) return false;
+    try {
+      const { error } = await client
+        .from('products')
+        .delete()
+        .eq('id', productId);
+      if (error) {
+        console.warn("[Supabase] deleteProduct note:", error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 4. Customer Wishlist Sync (Dedicated wishlists table only)
+  async getWishlist(email) {
+    const client = this.getClient();
+    if (!client || !email) return [];
+    try {
+      const cleanEmail = String(email).toLowerCase().trim();
+      const { data, error } = await client
+        .from('wishlists')
+        .select('product_id')
+        .eq('user_email', cleanEmail);
+      if (error) return [];
+      return (data || []).map(r => r.product_id);
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async syncWishlist(email, wishlistItems) {
+    const client = this.getClient();
+    if (!client || !email) return false;
+    try {
+      const cleanEmail = String(email).toLowerCase().trim();
+      const newItems = Array.isArray(wishlistItems) ? wishlistItems.map(String) : [];
+
+      // Fetch existing items in wishlists table
+      const { data: existing, error: fetchErr } = await client
+        .from('wishlists')
+        .select('product_id')
+        .eq('user_email', cleanEmail);
+
+      if (!fetchErr && existing) {
+        const existingIds = existing.map(r => r.product_id);
+        const toDelete = existingIds.filter(id => !newItems.includes(id));
+        if (toDelete.length > 0) {
+          await client
+            .from('wishlists')
+            .delete()
+            .eq('user_email', cleanEmail)
+            .in('product_id', toDelete);
+        }
+      }
+
+      // Upsert current items
+      if (newItems.length > 0) {
+        const records = newItems.map(prodId => ({
+          user_email: cleanEmail,
+          product_id: String(prodId)
+        }));
+        const { error: upsertErr } = await client
+          .from('wishlists')
+          .upsert(records, { onConflict: 'user_email,product_id' });
+        if (upsertErr) {
+          console.warn("[Supabase] Wishlist upsert note:", upsertErr.message);
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn("[Supabase] syncWishlist exception:", e.message);
+      return false;
+    }
+  },
+
+  // 5. Customer Profile Sync
   async syncUser(user) {
     const client = this.getClient();
     if (!client || !user || !user.email) return null;
@@ -169,41 +260,19 @@ const supabaseDataService = {
           last_login: new Date().toISOString()
         }], { onConflict: 'email' })
         .select();
-      if (!error) {
-        console.log(`✅ [Supabase] Customer ${user.email} synced to 'users' table.`);
+      if (error) {
+        console.warn("[Supabase] syncUser note:", error.message);
       }
       return { data, error };
     } catch (err) {
       return null;
     }
-  },
-
-  // 5. Customer Order Sync
-  async syncOrder(orderPayload) {
-    const client = this.getClient();
-    if (!client || !orderPayload) return null;
-    try {
-      const { data, error } = await client
-        .from('orders')
-        .insert([orderPayload])
-        .select();
-      if (!error) {
-        console.log(`✅ [Supabase] Order saved to 'orders' table.`);
-      }
-      return { data, error };
-    } catch (err) {
-      return null;
-    }
-  },
-
-  // Alias for compatibility
-  async insertOrder(orderPayload) {
-    return this.syncOrder(orderPayload);
   }
 };
 
 if (typeof window !== 'undefined') {
   window.supabaseDataService = supabaseDataService;
+  window.initSupabaseClient = initSupabaseClient;
   window.supabaseClient = supabaseClient;
 }
 

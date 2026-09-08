@@ -23,6 +23,44 @@ function safeJSON(key, defaultVal) {
   }
 }
 
+// ── GLOBAL API REQUEST HELPER ──
+async function apiRequest(url, options = {}) {
+  const defaultHeaders = {
+    'Content-Type': 'application/json'
+  };
+
+  const adminToken = sessionStorage.getItem('jjv_admin_token');
+  if (adminToken) {
+    defaultHeaders['Authorization'] = `Bearer ${adminToken}`;
+  }
+
+  const mergedHeaders = Object.assign({}, defaultHeaders, options.headers || {});
+  const fetchOptions = Object.assign({}, options, { headers: mergedHeaders });
+
+  try {
+    const response = await fetch(url, fetchOptions);
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      data = { success: response.ok, statusText: response.statusText };
+    }
+
+    if (!response.ok) {
+      const errorMsg = (data && (data.error || data.message)) || `HTTP ${response.status}: ${response.statusText}`;
+      const err = new Error(errorMsg);
+      err.status = response.status;
+      err.data = data;
+      throw err;
+    }
+
+    return data;
+  } catch (error) {
+    console.warn(`[API Request Error] ${options.method || 'GET'} ${url}:`, error.message);
+    throw error;
+  }
+}
+
 // Default Sample Inventory
 const DEFAULT_PRODUCTS = [
   {
@@ -193,10 +231,10 @@ class ShopApp {
   constructor() {
     window.shopApp = this;
     this.products = safeJSON('jjv_products', DEFAULT_PRODUCTS);
-    // Auto-migrate local cached images to optimized WebP
+    // Sanitize image paths in cached products (ensure broken card paths fallback cleanly)
     this.products.forEach(p => {
-      if (p.image && p.image.endsWith('.jpg') && p.image.startsWith('images/')) {
-        p.image = p.image.replace('.jpg', '.webp');
+      if (p.image && (p.image.includes('card1.jpg') || p.image.includes('card2.jpg') || p.image.includes('card3.jpg'))) {
+        p.image = 'images/logo.png';
       }
     });
     this.categories = safeJSON('jjv_categories', DEFAULT_CATEGORIES);
@@ -206,7 +244,7 @@ class ShopApp {
     this.userProfile = safeJSON('jjv_user_profile', null);
     this.dayDiscount = Math.max(0, Math.min(100, parseFloat(localStorage.getItem('jjv_day_discount')) || 15));
     this.specialOfferText = localStorage.getItem('jjv_offer_text') || "🎉 Mega Sale! Enjoy 15% OFF on all Toys, Return Gifts & Kitchenware!";
-    this.ownerPassword = localStorage.getItem('jjv_owner_pass') || "varahi123";
+    this.adminToken = sessionStorage.getItem('jjv_admin_token') || "";
     this.currentCategory = "all";
     this.chatLanguage = "en";
 
@@ -215,9 +253,10 @@ class ShopApp {
     this.initAdminQuotePresets();
     this.bindEvents();
     this.renderAll();
-    this.loadProductsFromFirebase();
+    this.loadProductsCatalog();
     this.loadStoreSettingsFromSupabase();
     this.loadCategoriesFromSupabase();
+    this.loadWishlistFromSupabase();
 
     // Automatically display login form when website is opened
     if (this.loginModal && (!this.currentUser || !this.currentUser.name)) {
@@ -752,21 +791,45 @@ class ShopApp {
 
       const loginForm = document.getElementById('login-form');
       if (loginForm) {
-        loginForm.addEventListener('submit', (e) => {
+        loginForm.addEventListener('submit', async (e) => {
           e.preventDefault();
           const usernameInput = loginForm.querySelector('input[type="text"]');
+          const passwordInput = loginForm.querySelector('input[type="password"]');
           const username = usernameInput && usernameInput.value.trim() ? usernameInput.value.trim() : 'Customer';
+          const email = username.includes('@') ? username : `${username.toLowerCase().replace(/\s+/g, '')}@gmail.com`;
+          const password = passwordInput ? passwordInput.value : '';
+
+          // Authenticate with Supabase Auth if client is available
+          if (window.supabaseClient && password && email) {
+            try {
+              const { data, error } = await window.supabaseClient.auth.signInWithPassword({
+                email: email,
+                password: password
+              });
+              if (!error && data?.user) {
+                console.log('✅ [Supabase Auth] Authenticated user session established:', data.user.id);
+              } else if (error) {
+                console.warn('[Supabase Auth] Sign-in note:', error.message);
+              }
+            } catch (authErr) {
+              console.warn('[Supabase Auth] Sign-in exception:', authErr.message || authErr);
+            }
+          }
+
           this.currentUser = {
             name: username,
-            email: username.includes('@') ? username : `${username.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
+            email: email,
             platform: 'Website Account',
             avatarChar: username[0].toUpperCase()
           };
           try {
             localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
-          } catch(err) {}
+          } catch(err) {
+            console.warn('[LocalStorage] Error storing customer user:', err);
+          }
           this.syncUserWithSupabase(this.currentUser);
           this.updateUserAuthUI();
+          this.loadWishlistFromSupabase();
           if (this.loginModal) this.loginModal.classList.add('hidden');
           this.showToast(`🎉 Welcome back, ${escapeHTML(username)}! Logged in successfully.`, 'success');
         });
@@ -774,12 +837,35 @@ class ShopApp {
 
       const regForm = document.getElementById('register-form');
       if (regForm) {
-        regForm.addEventListener('submit', (e) => {
+        regForm.addEventListener('submit', async (e) => {
           e.preventDefault();
           const usernameInput = regForm.querySelector('input[type="text"]');
           const emailInput = regForm.querySelector('input[type="email"]');
+          const passwordInput = regForm.querySelector('input[type="password"]');
           const username = usernameInput && usernameInput.value.trim() ? usernameInput.value.trim() : 'Customer';
           const email = emailInput && emailInput.value.trim() ? emailInput.value.trim() : `${username.toLowerCase()}@example.com`;
+          const password = passwordInput ? passwordInput.value : '';
+
+          // Register in Supabase Auth if client is available
+          if (window.supabaseClient && password && email) {
+            try {
+              const { data, error } = await window.supabaseClient.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                  data: { name: username }
+                }
+              });
+              if (!error && data?.user) {
+                console.log('✅ [Supabase Auth] User registered in Supabase Auth:', data.user.id);
+              } else if (error) {
+                console.warn('[Supabase Auth] SignUp note:', error.message);
+              }
+            } catch (authErr) {
+              console.warn('[Supabase Auth] SignUp exception:', authErr.message || authErr);
+            }
+          }
+
           this.currentUser = {
             name: username,
             email: email,
@@ -788,9 +874,12 @@ class ShopApp {
           };
           try {
             localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
-          } catch(err) {}
+          } catch(err) {
+            console.warn('[LocalStorage] Error storing customer user:', err);
+          }
           this.syncUserWithSupabase(this.currentUser);
           this.updateUserAuthUI();
+          this.loadWishlistFromSupabase();
           if (this.loginModal) this.loginModal.classList.add('hidden');
           this.showToast(`🎉 Welcome, ${escapeHTML(username)}! Account registered successfully.`, 'success');
         });
@@ -854,17 +943,44 @@ class ShopApp {
     }
 
     if (this.ownerAuthForm) {
-      this.ownerAuthForm.addEventListener('submit', (e) => {
+      this.ownerAuthForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const enteredPass = this.ownerPasswordInput ? this.ownerPasswordInput.value.trim() : '';
-        if (enteredPass === this.ownerPassword) {
-          if (this.ownerAuthModal) this.ownerAuthModal.classList.add('hidden');
-          if (this.ownerConsoleModal) this.ownerConsoleModal.classList.remove('hidden');
-          this.renderOwnerInventory();
-          this.renderOwnerOrders();
-          this.showToast('Welcome Owner! Console unlocked.', 'success');
-        } else {
+        if (!enteredPass) return;
+
+        const authBtn = this.ownerAuthForm.querySelector('button[type="submit"]');
+        const origBtnText = authBtn ? authBtn.innerHTML : 'Unlock Console';
+        if (authBtn) {
+          authBtn.disabled = true;
+          authBtn.innerHTML = "<i class='bx bx-loader-alt bx-spin'></i> Verifying...";
+        }
+
+        try {
+          const res = await apiRequest('/api/admin/login', {
+            method: 'POST',
+            body: JSON.stringify({ password: enteredPass })
+          });
+
+          if (res && res.success && res.token) {
+            this.adminToken = res.token;
+            sessionStorage.setItem('jjv_admin_token', this.adminToken);
+            if (this.authErrorMsg) this.authErrorMsg.classList.add('hidden');
+            if (this.ownerAuthModal) this.ownerAuthModal.classList.add('hidden');
+            if (this.ownerConsoleModal) this.ownerConsoleModal.classList.remove('hidden');
+            this.renderOwnerInventory();
+            this.renderOwnerOrders();
+            this.showToast('Welcome Owner! Console unlocked.', 'success');
+          } else {
+            if (this.authErrorMsg) this.authErrorMsg.classList.remove('hidden');
+          }
+        } catch (err) {
+          console.warn('[Admin Auth] Verification failed:', err.message || err);
           if (this.authErrorMsg) this.authErrorMsg.classList.remove('hidden');
+        } finally {
+          if (authBtn) {
+            authBtn.disabled = false;
+            authBtn.innerHTML = origBtnText;
+          }
         }
       });
     }
@@ -936,7 +1052,7 @@ class ShopApp {
 
     // Update Offers & Discounts Handler
     if (this.offersConfigForm) {
-      this.offersConfigForm.addEventListener('submit', (e) => {
+      this.offersConfigForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const newDiscount = Math.max(0, Math.min(100, parseFloat(document.getElementById('p-day-discount')?.value) || 0));
         const newOfferText = document.getElementById('p-offer-banner-text')?.value.trim() || this.specialOfferText;
@@ -948,8 +1064,22 @@ class ShopApp {
         localStorage.setItem('jjv_day_discount', String(this.dayDiscount));
         localStorage.setItem('jjv_offer_text', this.specialOfferText);
 
-        // SYNC TO SUPABASE (Discounts & Offers stored in Supabase)
-        if (window.supabaseDataService) {
+        // SYNC SETTINGS TO SUPABASE (Using admin token via backend or supabaseDataService)
+        if (this.adminToken) {
+          try {
+            await apiRequest('/api/admin/settings', {
+              method: 'POST',
+              body: JSON.stringify({
+                settings: {
+                  day_discount: this.dayDiscount,
+                  special_offer_text: this.specialOfferText
+                }
+              })
+            });
+          } catch (err) {
+            console.warn('[Admin] Failed to save settings via backend:', err.message || err);
+          }
+        } else if (window.supabaseDataService) {
           window.supabaseDataService.saveStoreSettings({
             day_discount: this.dayDiscount,
             special_offer_text: this.specialOfferText
@@ -957,13 +1087,11 @@ class ShopApp {
         }
 
         if (newPassInput) {
-          this.ownerPassword = newPassInput;
-          localStorage.setItem('jjv_owner_pass', this.ownerPassword);
           const pPass = document.getElementById('p-new-owner-pass');
           if (pPass) pPass.value = '';
-          this.showToast('Discount, Offers & Owner Password updated successfully!', 'success');
+          this.showToast('ℹ️ Owner password is authenticated securely on server. Update ADMIN_PASSWORD in your server environment.', 'info');
         } else {
-          this.showToast('Discount & Offer settings updated!', 'success');
+          this.showToast('Discount & Offer settings updated successfully!', 'success');
         }
 
         this.updateOfferBanner();
@@ -1321,7 +1449,12 @@ class ShopApp {
 
   saveCategories() {
     localStorage.setItem('jjv_categories', JSON.stringify(this.categories));
-    if (window.supabaseDataService) {
+    if (this.adminToken) {
+      apiRequest('/api/admin/categories', {
+        method: 'POST',
+        body: JSON.stringify({ categories: this.categories })
+      }).catch(err => console.warn('[Admin] Failed to save categories via backend:', err.message || err));
+    } else if (window.supabaseDataService) {
       window.supabaseDataService.saveCategories(this.categories);
     }
   }
@@ -1338,7 +1471,9 @@ class ShopApp {
         this.renderOwnerSections();
         console.log(`✅ [Supabase] Loaded ${data.length} categories from Supabase!`);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[Supabase] Load categories note:', e.message || e);
+    }
   }
 
   async loadStoreSettingsFromSupabase() {
@@ -1359,7 +1494,26 @@ class ShopApp {
         this.renderCart();
         console.log(`✅ [Supabase] Loaded discounts (${this.dayDiscount}%) & offers from Supabase!`);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[Supabase] Load settings note:', e.message || e);
+    }
+  }
+
+  async loadWishlistFromSupabase() {
+    if (!this.currentUser || !this.currentUser.email || !window.supabaseDataService) return;
+    try {
+      const items = await window.supabaseDataService.getWishlist(this.currentUser.email);
+      if (items && Array.isArray(items) && items.length > 0) {
+        const merged = Array.from(new Set([...this.wishlist, ...items]));
+        this.wishlist = merged;
+        localStorage.setItem('jjv_wishlist', JSON.stringify(this.wishlist));
+        this.updateWishlistBadge();
+        this.renderProducts();
+        this.renderWishlist();
+      }
+    } catch (err) {
+      console.warn('[Supabase] Load wishlist note:', err.message || err);
+    }
   }
 
   renderAll() {
@@ -1971,7 +2125,7 @@ class ShopApp {
     }
   }
 
-  handleCheckoutSubmit(e) {
+  async handleCheckoutSubmit(e) {
     e.preventDefault();
 
     if (this.cart.length === 0) {
@@ -1999,7 +2153,7 @@ class ShopApp {
       fullAddress = document.getElementById('outside-address')?.value.trim() || this.userProfile?.outsideAddress || '';
     }
 
-    // Auto-save/update this customer profile in My Account so subsequent checkouts never prompt again
+    // Auto-save/update this customer profile in My Account
     this.userProfile = {
       name: name,
       phone: phone,
@@ -2010,7 +2164,11 @@ class ShopApp {
       landmark: isHyd ? (document.getElementById('hyd-landmark')?.value.trim() || this.userProfile?.landmark || '') : '',
       outsideAddress: !isHyd ? (document.getElementById('outside-address')?.value.trim() || this.userProfile?.outsideAddress || '') : ''
     };
-    localStorage.setItem('jjv_user_profile', JSON.stringify(this.userProfile));
+    try {
+      localStorage.setItem('jjv_user_profile', JSON.stringify(this.userProfile));
+    } catch (err) {
+      console.warn('[LocalStorage] Profile save note:', err);
+    }
 
     let subtotal = 0;
     let discountedTotal = 0;
@@ -2028,53 +2186,51 @@ class ShopApp {
 
     const newOrder = {
       id: "ORD_" + Date.now().toString().slice(-6),
+      order_number: "ORD_" + Date.now().toString().slice(-6),
       customerName: name,
+      customer_name: name,
+      customer_phone: phone,
+      customer_email: this.currentUser ? this.currentUser.email : null,
       phone: phone,
       isHyderabad: isHyd,
+      delivery_location: isHyd ? 'Hyderabad' : 'Outside Hyderabad',
       addressDetails: fullAddress,
+      delivery_address: fullAddress,
       items: [...this.cart],
       subtotal: subtotal,
       totalAmount: discountedTotal,
+      total_payable: discountedTotal,
       timestamp: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
       status: "Pending Dispatch"
     };
+
+    // ── AUTHORITATIVE ORDER PERSISTENCE VIA SECURE BACKEND ──
+    try {
+      const resp = await apiRequest('/api/orders', {
+        method: 'POST',
+        body: JSON.stringify({ order: newOrder })
+      });
+
+      if (!resp || !resp.success) {
+        throw new Error(resp?.error || 'Order processing failed on server');
+      }
+
+      // Update total with authoritative calculation if provided
+      if (resp.order && typeof resp.order.total_payable === 'number') {
+        newOrder.totalAmount = resp.order.total_payable;
+        discountedTotal = resp.order.total_payable;
+      }
+    } catch (orderErr) {
+      console.error('Order creation error:', orderErr);
+      if (shipBtn) shipBtn.classList.remove('go');
+      this.showToast(`⚠️ Could not complete order: ${orderErr.message || 'Server unavailable'}`, 'error');
+      return;
+    }
 
     // Save order details to customer history and store console
     this.orders.unshift(newOrder);
     localStorage.setItem('jjv_orders', JSON.stringify(this.orders));
     this.renderOwnerOrders();
-
-    // ── SYNC CUSTOMER ORDER TO SUPABASE (Strictly Customer Data) ──
-    if (window.supabaseClient) {
-      window.supabaseClient
-        .from('orders')
-        .insert([{
-          order_number: newOrder.id,
-          customer_name: name,
-          customer_phone: phone,
-          customer_email: this.currentUser ? this.currentUser.email : null,
-          delivery_location: isHyd ? 'Hyderabad' : 'Outside Hyderabad',
-          delivery_address: fullAddress,
-          items: newOrder.items,
-          subtotal: subtotal,
-          discount_amount: Math.max(0, subtotal - discountedTotal),
-          total_payable: discountedTotal,
-          status: "Pending Dispatch"
-        }])
-        .then(() => {
-          console.log(`✅ [Supabase] Customer order ${newOrder.id} stored in Supabase orders table!`);
-        })
-        .catch(err => console.warn('Supabase customer order sync note:', err));
-    }
-
-    // Also sync to backend Python API
-    try {
-      fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: newOrder })
-      }).catch(() => {});
-    } catch (e) {}
 
     // Format WhatsApp Order Message
     const waMessage = `*NEW ORDER CONFIRMATION - Jaya Jaya Varahi Shop*\n\n` +
@@ -2177,33 +2333,57 @@ class ShopApp {
 
   saveProducts() {
     localStorage.setItem('jjv_products', JSON.stringify(this.products));
-    // Sync products to Firebase Cloud Firestore
-    if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
+    // Save to database if adminToken available or Supabase
+    if (this.adminToken) {
       this.products.forEach(p => {
-        window.firebaseProductService.saveProduct(p);
+        apiRequest('/api/admin/products', {
+          method: 'POST',
+          body: JSON.stringify({ product: p })
+        }).catch(err => console.warn('[Admin] Auto-save product note:', err.message || err));
+      });
+    } else if (window.supabaseDataService) {
+      this.products.forEach(p => {
+        window.supabaseDataService.saveProduct(p).catch(() => {});
       });
     }
   }
 
-  async loadProductsFromFirebase() {
-    if (!window.firebaseProductService || !window.firebaseProductService.isConfigured()) {
-      console.log('ℹ️ [Firebase] Firestore client awaiting custom credentials in firebaseClient.js. Operating with resilient local catalog.');
-      return;
-    }
-    try {
-      const data = await window.firebaseProductService.getProducts();
-      if (data && data.length > 0) {
-        this.products = data;
-        localStorage.setItem('jjv_products', JSON.stringify(this.products));
-        this.renderProducts();
-        this.renderOwnerInventory();
-        console.log(`🔥 [Firebase] Loaded ${data.length} products from Cloud Firestore!`);
-      } else {
-        console.log('ℹ️ [Firebase] Firestore products collection is empty. Click "Sync Catalog to Firebase" in Owner Console to populate.');
+  async loadProductsCatalog() {
+    // 1. Primary Source of Truth: Supabase PostgreSQL
+    if (window.supabaseDataService) {
+      try {
+        const data = await window.supabaseDataService.getProducts();
+        if (data && data.length > 0) {
+          this.products = data;
+          localStorage.setItem('jjv_products', JSON.stringify(this.products));
+          this.renderProducts();
+          this.renderOwnerInventory();
+          console.log(`✅ [Supabase] Loaded ${data.length} products from Supabase catalog!`);
+          return;
+        }
+      } catch (err) {
+        console.warn('[Supabase] Products catalog loading note:', err.message || err);
       }
-    } catch (err) {
-      console.warn('Firebase Firestore loading note:', err);
     }
+
+    // 2. Secondary fallback: Firebase Firestore if configured
+    if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
+      try {
+        const fbData = await window.firebaseProductService.getProducts();
+        if (fbData && fbData.length > 0) {
+          this.products = fbData;
+          localStorage.setItem('jjv_products', JSON.stringify(this.products));
+          this.renderProducts();
+          this.renderOwnerInventory();
+          console.log(`🔥 [Firebase] Loaded ${fbData.length} products from Cloud Firestore!`);
+          return;
+        }
+      } catch (err) {
+        console.warn('[Firebase] Firestore loading note:', err.message || err);
+      }
+    }
+
+    console.log('ℹ️ [Catalog] Running with local sample inventory.');
   }
 
   renderCart() {
@@ -2366,9 +2546,22 @@ class ShopApp {
       this.cart = this.cart.filter(item => String(item.productId) !== String(productId));
       this.wishlist = this.wishlist.filter(id => String(id) !== String(productId));
 
-      // Delete directly from Firebase Cloud Firestore
+      // 1. Delete via backend admin endpoint if token available
+      if (this.adminToken) {
+        apiRequest(`/api/admin/products?id=${encodeURIComponent(productId)}`, {
+          method: 'DELETE'
+        }).then(() => {
+          console.log(`✅ [Admin] Deleted product ${productId} via server backend`);
+        }).catch(err => {
+          console.warn('[Admin] Server product delete error:', err.message || err);
+        });
+      } else if (window.supabaseDataService) {
+        window.supabaseDataService.deleteProduct(productId).catch(() => {});
+      }
+
+      // 2. Delete from Firebase Cloud Firestore if configured
       if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
-        window.firebaseProductService.deleteProduct(productId);
+        window.firebaseProductService.deleteProduct(productId).catch(() => {});
       }
 
       this.saveProducts();
@@ -2414,21 +2607,36 @@ class ShopApp {
         productRecord.discount = Math.max(0, Math.min(100, parseFloat(customDiscountInput) || 0));
       }
 
-      // Direct Firebase Cloud Firestore insert/upsert call (Products belong to Firebase)
-      let savedProduct = productRecord;
+      // Save product to database via backend admin route or Supabase
+      if (this.adminToken) {
+        try {
+          await apiRequest('/api/admin/products', {
+            method: 'POST',
+            body: JSON.stringify({ product: productRecord })
+          });
+          console.log("✅ [Admin] Product successfully saved to database via backend:", productRecord.id);
+        } catch (adminErr) {
+          console.warn('[Admin] Failed to save product via backend:', adminErr.message || adminErr);
+        }
+      } else if (window.supabaseDataService) {
+        try {
+          await window.supabaseDataService.saveProduct(productRecord);
+        } catch (sbErr) {
+          console.warn('[Supabase] Note saving product:', sbErr.message || sbErr);
+        }
+      }
+
+      // Sync to Firebase Cloud Firestore if configured
       if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
         try {
-          const success = await window.firebaseProductService.saveProduct(productRecord);
-          if (success) {
-            console.log("🔥 [Firebase] Product successfully stored in Cloud Firestore:", savedProduct);
-          }
+          await window.firebaseProductService.saveProduct(productRecord);
         } catch (fbErr) {
-          console.error("🔥 Error saving product to Firebase Firestore:", fbErr);
+          console.warn('Firebase Firestore product note:', fbErr.message || fbErr);
         }
       }
 
       // Update in-memory state and refresh UI
-      this.products.unshift(savedProduct);
+      this.products.unshift(productRecord);
       this.saveProducts();
       this.renderOwnerInventory();
       this.renderProducts();
@@ -3771,10 +3979,10 @@ class ShopApp {
         const disc = this.getProductDiscount(p);
         const orig = parseFloat(p.price) || 0;
         const finalP = (orig * (1 - disc / 100)).toFixed(2);
-        const imgSrc = escapeHTML(p.image || p.img || 'images/card1.jpg');
+        const imgSrc = escapeHTML(p.image || p.img || 'images/logo.png');
         return `
           <div class="chat-product-card">
-            <img src="${imgSrc}" alt="${escapeHTML(p.name)}" class="chat-product-img" onerror="this.src='images/card1.jpg'">
+            <img src="${imgSrc}" alt="${escapeHTML(p.name)}" class="chat-product-img" onerror="this.onerror=null;this.src='images/logo.png';">
             <div class="chat-product-details">
               <div class="chat-product-title">${escapeHTML(p.name)}</div>
               <div class="chat-product-price-row">
@@ -4235,13 +4443,25 @@ class ShopApp {
         body: JSON.stringify({ email, mode })
       });
 
-      if (resp.ok) {
-        const data = await resp.json();
+      const data = await resp.json().catch(() => ({}));
+
+      if (resp.ok && data.success) {
         hasSmtp = Boolean(data.hasSmtpConfigured);
         devOtp = data.devOtp || null;
+      } else {
+        const errorMsg = data.error || `HTTP ${resp.status}: Unable to send verification code.`;
+        this.showToast(errorMsg, 'error');
+        const errEl = document.getElementById('email-otp-error-msg');
+        if (errEl) {
+          errEl.textContent = `⚠️ ${errorMsg}`;
+          errEl.classList.remove('hidden');
+        }
+        return;
       }
     } catch (err) {
-      console.info('[JJV OTP Engine] Running in local client-side mode:', err.message);
+      console.warn('[JJV OTP Engine] Network or server error:', err.message);
+      this.showToast('Unable to connect to verification server. Please try again.', 'error');
+      return;
     }
 
     if (this.pendingEmailOtp && this.pendingEmailOtp.timerId) {
@@ -4634,18 +4854,41 @@ class ShopApp {
       saveBtn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Updating Password...`;
     }
 
-    // Try backend update
+    // Backend update verification and response checking
+    let resetSuccess = false;
+    let resetError = 'Failed to reset password. Please verify your OTP code and try again.';
     try {
-      await fetch('/api/reset-password', {
+      const res = await apiRequest('/api/reset-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: this.pendingEmailOtp.email,
           otp: this.pendingEmailOtp.otpCode,
           newPassword: newPass
         })
       });
-    } catch (err) {}
+
+      if (res && res.success) {
+        resetSuccess = true;
+      } else if (res && res.error) {
+        resetError = res.error;
+      }
+    } catch (err) {
+      console.error('[Password Reset] Request failed:', err.message || err);
+      resetError = err.message || resetError;
+    }
+
+    if (!resetSuccess) {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = `<i class='bx bx-check'></i> Save & Log In`;
+      }
+      if (errorEl) {
+        errorEl.textContent = `⚠️ ${resetError}`;
+        errorEl.classList.remove('hidden');
+      }
+      this.showToast(resetError, 'error');
+      return;
+    }
 
     // Complete login for user
     const email = this.pendingEmailOtp.email;
@@ -4662,12 +4905,14 @@ class ShopApp {
 
     try {
       localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
-      // Save local mock credentials for convenience
-      localStorage.setItem(`jjv_pass_${email}`, newPass);
-    } catch (err) {}
+      // NOTE: Plain-text password is NEVER stored in localStorage or sessionStorage.
+    } catch (err) {
+      console.warn('[LocalStorage] Error storing customer user:', err);
+    }
 
     this.syncUserWithSupabase(this.currentUser);
     this.updateUserAuthUI();
+    this.loadWishlistFromSupabase();
     this.closeEmailOTPModal();
     this.showToast(`🎉 Password reset successful! Welcome, ${escapeHTML(capitalizedName)}.`, 'success');
   }
@@ -4686,10 +4931,13 @@ class ShopApp {
 
     try {
       localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
-    } catch (err) {}
+    } catch (err) {
+      console.warn('[LocalStorage] Error storing customer user:', err);
+    }
 
     this.syncUserWithSupabase(this.currentUser);
     this.updateUserAuthUI();
+    this.loadWishlistFromSupabase();
     this.closeEmailOTPModal();
     this.showToast(`🎉 Logged in with Email OTP! Welcome, ${escapeHTML(capitalizedName)}.`, 'success');
   }
@@ -4697,26 +4945,20 @@ class ShopApp {
   syncUserWithSupabase(user) {
     if (!user || !user.email) return;
     try {
-      // 1. Sync through backend API endpoint
-      fetch('/api/login', {
+      // Sync through backend API endpoint (single path to prevent duplicate inserts)
+      apiRequest('/api/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: user.email, name: user.name, platform: user.platform })
-      }).then(r => r.json()).then(data => {
-        if (data.supabaseSynced) {
+      }).then(data => {
+        if (data && data.supabaseSynced) {
           console.log(`✅ [Supabase] Synced user ${user.email} into database`);
         }
-      }).catch(() => {});
-
-      // 2. Direct frontend sync if client is available
-      if (window.supabaseClient) {
-        window.supabaseClient
-          .from('users')
-          .insert({ email: user.email })
-          .then(() => {})
-          .catch(() => {});
-      }
-    } catch (e) {}
+      }).catch(err => {
+        console.warn('[Supabase] Sync user note:', err.message || err);
+      });
+    } catch (e) {
+      console.warn('[Supabase] Sync user unexpected error:', e);
+    }
   }
 }
 

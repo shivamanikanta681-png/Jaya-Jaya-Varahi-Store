@@ -34,6 +34,7 @@ def load_env() -> Dict[str, str]:
 
 ENV = load_env()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", ENV.get("GEMINI_API_KEY", "")).strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", ENV.get("GEMINI_MODEL", "gemini-1.5-flash")).strip()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", ENV.get("OPENAI_API_KEY", "")).strip()
 
 
@@ -204,67 +205,75 @@ class ProductRetriever:
     DEFAULT_PRODUCTS = [
         {
             "id": "p1",
-            "name": "Handcrafted Wooden Racing Toy Car",
+            "name": "Wooden Racing Toy Car",
             "category": "toys",
             "price": 450.0,
-            "image": "images/card1.jpg",
+            "image": "images/toy_car.webp",
             "description": "Handcrafted non-toxic wooden racing car with smooth rolling wheels for kids."
         },
         {
             "id": "p2",
-            "name": "Interactive STEM Learning Robot",
+            "name": "Interactive Educational Robot",
             "category": "toys",
             "price": 899.0,
-            "image": "images/card2.jpg",
+            "image": "https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?auto=format&fit=crop&w=600&q=80",
             "description": "Smart STEM learning robot with lights, music, and interactive sound modes."
         },
         {
             "id": "p3",
-            "name": "Plush Soft Cuddly Teddy Bear",
+            "name": "Plush Soft Teddy Bear",
             "category": "toys",
             "price": 350.0,
-            "image": "images/card3.jpg",
+            "image": "https://images.unsplash.com/photo-1559454403-b8fb88521f11?auto=format&fit=crop&w=600&q=80",
             "description": "Ultra-soft premium plush teddy bear suitable for toddlers and gifting."
         },
         {
             "id": "p4",
-            "name": "Hand-Carved Pure Brass Peacock Diya",
+            "name": "Traditional Brass Diya Gift Set",
             "category": "return_gifts",
-            "price": 650.0,
-            "image": "images/card4.jpg",
-            "description": "Traditional pure brass peacock oil lamp with antique finish for mandir & return gifts."
+            "price": 599.0,
+            "image": "images/return_gift.webp",
+            "description": "Exquisite hand-carved pure brass oil diya set packaged in a velvet gift box."
         },
         {
             "id": "p5",
-            "name": "Vintage Handcrafted Wooden Jewellery Box",
+            "name": "Handcrafted Wooden Jewellery Box",
             "category": "return_gifts",
-            "price": 550.0,
-            "image": "images/card5.jpg",
-            "description": "Floral carved wooden keepsake jewellery storage box with velvet interior."
+            "price": 299.0,
+            "image": "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=600&q=80",
+            "description": "Vintage carved wooden trinket box perfect for return gifts and festive favors."
         },
         {
             "id": "p6",
-            "name": "Golden Thread Eco-Friendly Jute Bag",
+            "name": "Eco-Friendly Jute Gift Bag Set",
             "category": "return_gifts",
-            "price": 180.0,
-            "image": "images/card6.jpg",
-            "description": "Festive reusable jute gift bag with golden thread weave for poojas and ceremonies."
+            "price": 199.0,
+            "image": "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80",
+            "description": "Set of 3 stylish reusable printed jute carry bags with secure zipper."
         },
         {
             "id": "p7",
-            "name": "Tri-Ply Stainless Steel Induction Pot",
+            "name": "Premium Stainless Steel Cookware Set",
             "category": "kitchenware",
-            "price": 1299.0,
-            "image": "images/card7.jpg",
-            "description": "Heavy gauge 3-layer steel pot with aluminum core, compatible with induction and gas."
+            "price": 1499.0,
+            "image": "images/kitchenware.webp",
+            "description": "3-piece induction bottom stainless steel pots & saucepans with glass lids."
         },
         {
             "id": "p8",
-            "name": "Granite Non-Stick Frying Pan",
+            "name": "Non-Stick Granite Frying Pan",
             "category": "kitchenware",
-            "price": 850.0,
-            "image": "images/card8.jpg",
-            "description": "PFOA-free durable granite coated fry pan with ergonomic cool-touch handle."
+            "price": 799.0,
+            "image": "https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=600&q=80",
+            "description": "Heavy duty scratch-resistant granite coating fry pan with soft touch handle."
+        },
+        {
+            "id": "p9",
+            "name": "Ceramic Designer Coffee Mugs Set",
+            "category": "kitchenware",
+            "price": 449.0,
+            "image": "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=600&q=80",
+            "description": "Set of 4 hand-glazed stoneware coffee mugs for home and office."
         }
     ]
 
@@ -335,7 +344,7 @@ class ProductRetriever:
                     "original_price": orig_price,
                     "discount_percent": day_discount,
                     "discounted_price": discounted_price,
-                    "image": p.get("image", "images/card1.jpg"),
+                    "image": p.get("image", "images/logo.png"),
                     "description": p.get("description", "")
                 }
                 scored_products.append((product_payload, score))
@@ -455,7 +464,8 @@ class RAGPipeline:
         }
 
         # Candidate models list in priority order
-        candidate_models = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-flash-latest"]
+        candidate_models = [GEMINI_MODEL, "gemini-1.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+        candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
 
         for model in candidate_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
@@ -520,10 +530,10 @@ class RAGPipeline:
                 return ""
             cards = ""
             for p in prods:
-                img_src = p.get("image") or "images/card1.jpg"
+                img_src = p.get("image") or "images/logo.png"
                 cards += f"""
                 <div class="chat-product-card">
-                  <img src="{img_src}" alt="{p.get('name')}" class="chat-product-img" onerror="this.src='images/card1.jpg'">
+                  <img src="{img_src}" alt="{p.get('name')}" class="chat-product-img" onerror="this.src='images/logo.png'">
                   <div class="chat-product-details">
                     <div class="chat-product-title">{p.get('name')}</div>
                     <div class="chat-product-price-row">

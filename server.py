@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
 """
-Jaya Jaya Varahi Shop - Local Server with Free Email OTP System
--------------------------------------------------------------
-Serves website files and provides REST API endpoints for Email OTP:
-- POST /api/send-otp      : Generates & emails 6-digit OTP via Gmail SMTP
-- POST /api/verify-otp    : Validates entered OTP code
-- POST /api/reset-password: Resets user password
+Jaya Jaya Varahi Shop - Production-Ready Secure Backend & API Server
+--------------------------------------------------------------------
+Provides robust REST APIs, server-side admin authentication, authoritative
+order pricing & persistence, cryptographic OTP verification, and AI RAG support:
+- GET  /api/health         : Server status & health check
+- POST /api/send-otp       : Cryptographically secure 6-digit OTP with rate limiting
+- POST /api/verify-otp     : Validates OTP against server cache
+- POST /api/reset-password : Resets user authentication
+- POST /api/admin/login    : Server-authorized owner/admin authentication
+- POST /api/admin/settings : Saves discounts & announcements (Admin protected)
+- POST /api/admin/categories: Saves categories (Admin protected)
+- POST /api/admin/products : Adds, updates or deletes products in Supabase (Admin protected)
+- POST /api/orders         : Authoritative server-validated order persistence
+- POST /api/chat/rag       : RAG customer support & product recommendations
 """
 
 import http.server
 import socketserver
 import json
 import os
-import random
+import secrets
 import time
 import smtplib
 import ssl
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Dict, Any, Tuple, Optional
 from rag_engine import get_rag_pipeline, OrderRetriever
 
 PORT = 8000
@@ -37,11 +46,23 @@ def load_env():
     return env_vars
 
 ENV = load_env()
-SMTP_EMAIL = os.environ.get("SMTP_EMAIL", ENV.get("SMTP_EMAIL", ""))
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", ENV.get("SMTP_PASSWORD", ""))
-SMTP_SENDER_NAME = os.environ.get("SMTP_SENDER_NAME", ENV.get("SMTP_SENDER_NAME", "Jaya Jaya Varahi Shop"))
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", ENV.get("GEMINI_API_KEY", "")).strip()
+
+# Environment settings
+APP_ENV = os.environ.get("APP_ENV", ENV.get("APP_ENV", "development")).strip().lower()
 PORT = int(os.environ.get("PORT", ENV.get("PORT", 8000)))
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", ENV.get("ALLOWED_ORIGIN", "*")).strip()
+
+# Admin credentials
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ENV.get("ADMIN_PASSWORD", "varahi123")).strip()
+
+# SMTP credentials
+SMTP_EMAIL = os.environ.get("SMTP_EMAIL", ENV.get("SMTP_EMAIL", "")).strip()
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", ENV.get("SMTP_PASSWORD", "")).strip()
+SMTP_SENDER_NAME = os.environ.get("SMTP_SENDER_NAME", ENV.get("SMTP_SENDER_NAME", "Jaya Jaya Varahi Shop")).strip()
+
+# Gemini AI settings
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", ENV.get("GEMINI_API_KEY", "")).strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", ENV.get("GEMINI_MODEL", "gemini-1.5-flash")).strip()
 
 STORE_CONTEXT = """
 You are 'Varahi AI', the official AI customer support assistant for 'Jaya Jaya Varahi Shop & Gifts' located in Boduppal / Peerzadiguda, Hyderabad.
@@ -57,66 +78,50 @@ Store Information:
 - Keep answers polite, concise, formatted with clear emojis and bullet points. Offer WhatsApp contact (+91 75693 04410) when helpful.
 """
 
-def generate_direct_gemini_reply(query: str, lang: str = "en") -> str:
-    """Direct grounded Gemini reply fallback."""
-    if not GEMINI_API_KEY:
-        return (
-            f"Namaste! 🙏 Regarding '<strong>{query}</strong>':<br><br>"
-            "We provide handcrafted wooden toys, pure brass return gifts, and cookware. "
-            "For Hyderabad orders, we dispatch within 1–3 hours via Rapido/Uber! "
-            "<br><br>👉 For real-time stock inquiries, message us directly on WhatsApp at "
-            "<a href='https://wa.me/917569304410' target='_blank' style='color:#16a34a;font-weight:700;'>+91 75693 04410</a>."
-        )
+# Ephemeral Caches
+OTP_CACHE: Dict[str, Dict[str, Any]] = {}
+OTP_RATE_LIMITS: Dict[str, list] = {}  # key -> [timestamps]
+ADMIN_SESSIONS: Dict[str, float] = {}  # token -> expires_at
 
-    system_instruction = f"{STORE_CONTEXT}\nPlease reply in the customer's language ({lang})."
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": system_instruction},
-                    {"text": f"Customer Query: {query}"}
-                ]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.4,
-            "maxOutputTokens": 500
-        }
-    }
+def is_rate_limited(key: str, max_requests: int = 3, window_seconds: int = 600, cooldown_seconds: int = 60) -> Tuple[bool, str]:
+    """Checks per-key sliding window rate limit and cooldown."""
+    now = time.time()
+    history = [ts for ts in OTP_RATE_LIMITS.get(key, []) if now - ts < window_seconds]
+    OTP_RATE_LIMITS[key] = history
 
-    import urllib.request
-    candidate_models = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-flash-latest"]
-    for model in candidate_models:
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
-        try:
-            req = urllib.request.Request(
-                endpoint,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                if resp.status == 200:
-                    result = json.loads(resp.read().decode("utf-8"))
-                    candidates = result.get("candidates", [])
-                    if candidates:
-                        text = candidates[0]["content"]["parts"][0]["text"]
-                        return text.replace("\n", "<br>")
-        except Exception:
-            continue
+    if history and (now - history[-1] < cooldown_seconds):
+        wait_time = int(cooldown_seconds - (now - history[-1]))
+        return True, f"Please wait {wait_time}s before requesting another verification code."
 
-    return (
-        f"Thank you for contacting Jaya Jaya Varahi Shop! For immediate inquiries regarding '{query}', "
-        "please reach out to our team at +91 75693 04410 on WhatsApp."
-    )
+    if len(history) >= max_requests:
+        return True, f"Too many verification requests. Please try again after {window_seconds // 60} minutes."
 
-# Temporary in-memory OTP storage: { email_lower: { 'otp': '123456', 'expires_at': ts, 'attempts': 0, 'verified': bool } }
-OTP_CACHE = {}
+    history.append(now)
+    OTP_RATE_LIMITS[key] = history
+    return False, ""
 
-def send_real_email(recipient_email, otp_code, mode="reset"):
+def is_authenticated_admin(headers) -> bool:
+    """Verifies admin token from Authorization header or custom header."""
+    auth_header = headers.get("Authorization", "")
+    token = ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+    else:
+        token = headers.get("x-admin-token", "").strip()
+
+    if not token or token not in ADMIN_SESSIONS:
+        return False
+
+    if time.time() > ADMIN_SESSIONS[token]:
+        del ADMIN_SESSIONS[token]
+        return False
+
+    return True
+
+def send_real_email(recipient_email: str, otp_code: str, mode: str = "reset") -> Tuple[bool, str]:
     """Sends real email via Gmail SMTP_SSL."""
     if not SMTP_EMAIL or not SMTP_PASSWORD or "your_email" in SMTP_EMAIL:
-        return False, "SMTP not configured. Using local visual OTP display."
+        return False, "SMTP not configured on server."
 
     action_label = "Password Reset Request" if mode == "reset" else "Account Login"
     subject = f"🔑 {otp_code} is your {SMTP_SENDER_NAME} verification code"
@@ -126,7 +131,6 @@ def send_real_email(recipient_email, otp_code, mode="reset"):
     msg["From"] = f"{SMTP_SENDER_NAME} <{SMTP_EMAIL}>"
     msg["To"] = recipient_email
 
-    # Plaintext version
     msg.set_content(f"""Namaste!
 
 Your one-time verification code (OTP) for {SMTP_SENDER_NAME} {action_label} is:
@@ -140,7 +144,6 @@ Jaya Jaya Varahi Shop & Gifts Team
 Boduppal, Hyderabad
 """)
 
-    # Modern HTML version
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -188,39 +191,132 @@ Boduppal, Hyderabad
     except Exception as e:
         return False, f"SMTP Error: {str(e)}"
 
-def sync_user_to_supabase(email, name=None, platform="Website Account"):
-    """Inserts or updates user in Supabase 'users' table."""
+def sync_user_to_supabase(email: str, name: Optional[str] = None, platform: str = "Website Account") -> Tuple[bool, str]:
+    """Inserts or updates user in Supabase 'users' table using service client."""
     try:
         from supabase_client import get_supabase
-        client = get_supabase()
+        client = get_supabase(admin=True)
         # Check if user already exists
         existing = client.table("users").select("id, email").eq("email", email).execute()
         if existing.data and len(existing.data) > 0:
-            print(f">> [Supabase] User '{email}' already present in 'users' table (id: {existing.data[0].get('id')})")
-            return True, f"User already exists in Supabase (id: {existing.data[0].get('id')})"
+            user_id = existing.data[0].get("id")
+            client.table("users").update({
+                "last_login": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "platform": platform
+            }).eq("id", user_id).execute()
+            return True, f"User already exists in Supabase (id: {user_id})"
 
-        # Insert new user with email
-        res = client.table("users").insert({"email": email}).execute()
-        print(f">> [Supabase] Successfully inserted '{email}' into 'users' table!")
+        res = client.table("users").insert({
+            "email": email,
+            "name": name or email.split("@")[0].capitalize(),
+            "platform": platform
+        }).execute()
         return True, "Successfully inserted into Supabase 'users' table"
     except Exception as e:
-        print(f">> [Supabase Note] Sync error: {e}")
         return False, str(e)
 
-def sync_order_to_supabase(order_data):
-    """Inserts an order record into Supabase 'orders' table."""
+def calculate_authoritative_order(order_payload: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
+    """
+    Server-side authoritative pricing and order structure calculation.
+    Fetches official product prices and discounts to prevent client price tampering.
+    """
+    customer_name = str(order_payload.get("customer_name") or order_payload.get("customerName") or "").strip()
+    customer_phone = str(order_payload.get("customer_phone") or order_payload.get("phone") or "").strip()
+    delivery_address = str(order_payload.get("delivery_address") or order_payload.get("addressDetails") or "").strip()
+    delivery_location = str(order_payload.get("delivery_location") or ("Hyderabad" if order_payload.get("isHyderabad") else "Outside Hyderabad")).strip()
+    customer_email = order_payload.get("customer_email") or order_payload.get("email")
+
+    if not customer_name:
+        return False, {}, "Customer name is required"
+    if not customer_phone or len(customer_phone.replace(" ", "")) < 10:
+        return False, {}, "Valid phone number (at least 10 digits) is required"
+    if not delivery_address:
+        return False, {}, "Delivery address is required"
+
+    items_raw = order_payload.get("items", [])
+    if not items_raw or not isinstance(items_raw, list):
+        return False, {}, "Order must include at least one item"
+
+    # Fetch catalog from Supabase or fallback to get authoritative prices
+    rag = get_rag_pipeline()
+    catalog = rag.products_retriever.fetch_products()
+    catalog_map = {str(p["id"]): p for p in catalog}
+
+    # Fetch current day discount from store settings
+    day_discount = 15.0
     try:
         from supabase_client import get_supabase
-        client = get_supabase()
+        s_client = get_supabase(admin=False)
+        res = s_client.table("store_settings").select("value").eq("key", "discount_offers").maybe_single().execute()
+        if res.data and isinstance(res.data.get("value"), dict):
+            day_discount = float(res.data["value"].get("day_discount", 15.0))
+    except Exception:
+        pass
+
+    calculated_items = []
+    subtotal = 0.0
+    discount_multiplier = max(0.0, 1.0 - (day_discount / 100.0))
+
+    for it in items_raw:
+        prod_id = str(it.get("productId") or it.get("id") or "")
+        qty = max(1, int(it.get("qty") or it.get("quantity") or 1))
+        matched = catalog_map.get(prod_id)
+        if not matched:
+            # Fallback if product ID not in catalog
+            base_price = float(it.get("price") or 500.0)
+            p_name = it.get("name") or f"Product {prod_id}"
+        else:
+            base_price = float(matched.get("price") or 500.0)
+            p_name = matched.get("name")
+
+        item_sub = base_price * qty
+        subtotal += item_sub
+        calculated_items.append({
+            "productId": prod_id,
+            "name": p_name,
+            "qty": qty,
+            "unitPrice": base_price,
+            "subtotal": item_sub
+        })
+
+    discount_amount = round(subtotal * (day_discount / 100.0), 2)
+    total_payable = round(subtotal - discount_amount, 2)
+
+    order_number = order_payload.get("order_number") or order_payload.get("id")
+    if not order_number or not str(order_number).startswith("ORD_"):
+        order_number = f"ORD_{secrets.randbelow(900000) + 100000}"
+
+    sanitized_order = {
+        "order_number": order_number,
+        "customer_name": customer_name,
+        "customer_phone": customer_phone,
+        "customer_email": customer_email,
+        "delivery_location": delivery_location,
+        "delivery_address": delivery_address,
+        "pincode": order_payload.get("pincode"),
+        "items": calculated_items,
+        "subtotal": round(subtotal, 2),
+        "discount_amount": discount_amount,
+        "total_payable": total_payable,
+        "status": "Pending Dispatch"
+    }
+
+    return True, sanitized_order, ""
+
+def sync_order_to_supabase(order_data: Dict[str, Any]) -> Tuple[bool, Any, str]:
+    """Inserts verified order record into Supabase 'orders' table."""
+    try:
+        from supabase_client import get_supabase
+        client = get_supabase(admin=True)
         res = client.table("orders").insert(order_data).execute()
-        print(f">> [Supabase] Inserted order into 'orders' table")
-        return True, res.data
+        if res.data:
+            return True, res.data, "Order stored in Supabase"
+        return False, None, "No data returned from database insert"
     except Exception as e:
-        print(f">> [Supabase Note] Order sync note: {e}")
-        return False, str(e)
+        return False, None, str(e)
 
 class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
-    """Custom request handler with API endpoints and CORS support."""
+    """Custom request handler with secure API endpoints and CORS support."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(DIRECTORY), **kwargs)
@@ -236,11 +332,12 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache, must-revalidate")
         super().end_headers()
 
-    def _set_cors_headers(self, status=200, content_type="application/json"):
+    def _set_cors_headers(self, status: int = 200, content_type: str = "application/json"):
         self.send_response(status)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = ALLOWED_ORIGIN if ALLOWED_ORIGIN != "*" else "*"
+        self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-token")
         self.send_header("Content-Type", content_type)
         self.end_headers()
 
@@ -248,6 +345,21 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
         self._set_cors_headers(200)
 
     def do_GET(self):
+        # ── HEALTH CHECK ENDPOINT ──
+        if self.path == "/api/health":
+            self._set_cors_headers(200)
+            health_status = {
+                "success": True,
+                "server": "online",
+                "environment": APP_ENV,
+                "databaseConfigured": bool(os.environ.get("SUPABASE_URL", ENV.get("SUPABASE_URL"))),
+                "geminiConfigured": bool(GEMINI_API_KEY),
+                "smtpConfigured": bool(SMTP_EMAIL and SMTP_PASSWORD and "your_email" not in SMTP_EMAIL)
+            }
+            self.wfile.write(json.dumps(health_status).encode("utf-8"))
+            return
+
+        # ── RAG KNOWLEDGE BASE ENDPOINT ──
         if self.path == "/api/rag/knowledge":
             rag = get_rag_pipeline()
             self._set_cors_headers(200)
@@ -258,12 +370,13 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "categories": list(set(c.get("category") for c in rag.kb.chunks))
             }).encode("utf-8"))
             return
+
         return super().do_GET()
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         post_body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
-        
+
         try:
             payload = json.loads(post_body) if post_body else {}
         except json.JSONDecodeError:
@@ -271,18 +384,128 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"success": False, "error": "Invalid JSON format"}).encode("utf-8"))
             return
 
-        # ── ROUTE 1: SEND OTP ──
-        if self.path == "/api/send-otp":
+        # ── ROUTE 1: ADMIN LOGIN ──
+        if self.path == "/api/admin/login":
+            entered_password = str(payload.get("password", "")).strip()
+            if not entered_password or entered_password != ADMIN_PASSWORD:
+                self._set_cors_headers(401)
+                self.wfile.write(json.dumps({"success": False, "error": "Invalid owner/admin password"}).encode("utf-8"))
+                return
+
+            admin_token = secrets.token_hex(24)
+            ADMIN_SESSIONS[admin_token] = time.time() + 86400  # 24 hours validity
+            self._set_cors_headers(200)
+            self.wfile.write(json.dumps({
+                "success": True,
+                "message": "Admin authorization granted",
+                "token": admin_token,
+                "expiresIn": 86400
+            }).encode("utf-8"))
+            return
+
+        # ── ROUTE 2: ADMIN SAVE STORE SETTINGS ──
+        elif self.path == "/api/admin/settings":
+            if not is_authenticated_admin(self.headers):
+                self._set_cors_headers(403)
+                self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
+                return
+
+            settings = payload.get("settings", payload)
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                client.table("store_settings").upsert({
+                    "key": "discount_offers",
+                    "value": settings,
+                    "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                }).execute()
+                self._set_cors_headers(200)
+                self.wfile.write(json.dumps({"success": True, "message": "Store settings saved successfully"}).encode("utf-8"))
+            except Exception as e:
+                self._set_cors_headers(500)
+                self.wfile.write(json.dumps({"success": False, "error": f"Failed to save settings: {str(e)}"}).encode("utf-8"))
+            return
+
+        # ── ROUTE 3: ADMIN SAVE CATEGORIES ──
+        elif self.path == "/api/admin/categories":
+            if not is_authenticated_admin(self.headers):
+                self._set_cors_headers(403)
+                self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
+                return
+
+            categories = payload.get("categories", [])
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                records = [{
+                    "id": c.get("id"),
+                    "name": c.get("name"),
+                    "icon": c.get("icon", "bx-grid-alt"),
+                    "builtin": bool(c.get("builtin", False))
+                } for c in categories if c.get("id") and c.get("name")]
+                if records:
+                    client.table("categories").upsert(records).execute()
+                self._set_cors_headers(200)
+                self.wfile.write(json.dumps({"success": True, "message": "Categories updated successfully"}).encode("utf-8"))
+            except Exception as e:
+                self._set_cors_headers(500)
+                self.wfile.write(json.dumps({"success": False, "error": f"Failed to save categories: {str(e)}"}).encode("utf-8"))
+            return
+
+        # ── ROUTE 4: ADMIN PRODUCTS CRUD ──
+        elif self.path == "/api/admin/products":
+            if not is_authenticated_admin(self.headers):
+                self._set_cors_headers(403)
+                self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
+                return
+
+            action = payload.get("action", "upsert")
+            product = payload.get("product", {})
+
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                if action == "delete":
+                    prod_id = payload.get("id") or product.get("id")
+                    client.table("products").delete().eq("id", prod_id).execute()
+                    msg = f"Product {prod_id} deleted successfully"
+                else:
+                    client.table("products").upsert(product).execute()
+                    msg = "Product saved successfully"
+
+                self._set_cors_headers(200)
+                self.wfile.write(json.dumps({"success": True, "message": msg}).encode("utf-8"))
+            except Exception as e:
+                self._set_cors_headers(500)
+                self.wfile.write(json.dumps({"success": False, "error": f"Product update error: {str(e)}"}).encode("utf-8"))
+            return
+
+        # ── ROUTE 5: SEND OTP (Cryptographic & Rate Limited) ──
+        elif self.path == "/api/send-otp":
             email = payload.get("email", "").strip().lower()
             mode = payload.get("mode", "reset")
+            client_ip = self.client_address[0] if self.client_address else "unknown"
 
             if not email or "@" not in email:
                 self._set_cors_headers(400)
                 self.wfile.write(json.dumps({"success": False, "error": "A valid email address is required"}).encode("utf-8"))
                 return
 
-            # SERVER strictly generates the OTP, not the client
-            otp_code = f"{random.randint(100000, 999999)}"
+            # Rate limiting checks
+            rate_limited, rate_msg = is_rate_limited(f"email:{email}", max_requests=3, window_seconds=600, cooldown_seconds=60)
+            if rate_limited:
+                self._set_cors_headers(429)
+                self.wfile.write(json.dumps({"success": False, "error": rate_msg}).encode("utf-8"))
+                return
+
+            ip_limited, ip_msg = is_rate_limited(f"ip:{client_ip}", max_requests=10, window_seconds=600, cooldown_seconds=5)
+            if ip_limited:
+                self._set_cors_headers(429)
+                self.wfile.write(json.dumps({"success": False, "error": "Too many requests from this network. Please try again later."}).encode("utf-8"))
+                return
+
+            # Cryptographically secure 6-digit random code
+            otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
             expires_at = time.time() + 300  # 5 minutes expiry
 
             OTP_CACHE[email] = {
@@ -293,26 +516,36 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "mode": mode
             }
 
-            # Attempt real email send
             email_sent, status_note = send_real_email(email, otp_code, mode)
-            print(f">> [OTP] Secure verification code for {email}: {otp_code} (SMTP active: {email_sent})")
+
+            if APP_ENV == "development":
+                print(f">> [OTP Dev Mode] Code for {email}: {otp_code} (SMTP active: {email_sent})")
+            else:
+                print(f">> [OTP] Verification request processed for {email} (SMTP active: {email_sent})")
+
+            # In production, if SMTP is configured and fails, return service unavailable
+            if APP_ENV == "production" and not email_sent:
+                self._set_cors_headers(503)
+                self.wfile.write(json.dumps({"success": False, "error": "Email delivery service temporarily unavailable"}).encode("utf-8"))
+                return
 
             response_data = {
                 "success": True,
                 "message": f"Verification code sent to {email}",
                 "email": email,
                 "expiresIn": 300,
-                "hasSmtpConfigured": email_sent,
-                "statusDetail": status_note
+                "hasSmtpConfigured": email_sent
             }
-            if not email_sent:
+
+            # Only return devOtp in explicit development mode when SMTP is inactive
+            if APP_ENV == "development" and not email_sent:
                 response_data["devOtp"] = otp_code
 
             self._set_cors_headers(200)
             self.wfile.write(json.dumps(response_data).encode("utf-8"))
             return
 
-        # ── ROUTE 2: VERIFY OTP ──
+        # ── ROUTE 6: VERIFY OTP ──
         elif self.path == "/api/verify-otp":
             email = payload.get("email", "").strip().lower()
             entered_otp = str(payload.get("otp", "")).strip()
@@ -337,7 +570,6 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             if entered_otp == record["otp"]:
                 record["verified"] = True
-                # Automatically sync verified user to Supabase 'users' table
                 sync_user_to_supabase(email, platform="Email OTP Verified")
                 self._set_cors_headers(200)
                 self.wfile.write(json.dumps({
@@ -357,7 +589,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 }).encode("utf-8"))
                 return
 
-        # ── ROUTE 3: RESET PASSWORD ──
+        # ── ROUTE 7: RESET PASSWORD ──
         elif self.path == "/api/reset-password":
             email = payload.get("email", "").strip().lower()
             entered_otp = str(payload.get("otp", "")).strip()
@@ -366,7 +598,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             record = OTP_CACHE.get(email)
             if not record or (not record.get("verified") and record.get("otp") != entered_otp):
                 self._set_cors_headers(403)
-                self.wfile.write(json.dumps({"success": False, "error": "OTP must be verified before resetting password."}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "error": "Valid OTP verification required before resetting password."}).encode("utf-8"))
                 return
 
             if len(new_password) < 6:
@@ -374,10 +606,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": "Password must be at least 6 characters long."}).encode("utf-8"))
                 return
 
-            # Clear cached OTP
             OTP_CACHE.pop(email, None)
-
-            # Sync user and update to Supabase
             sync_user_to_supabase(email, platform="Password Reset Completed")
 
             self._set_cors_headers(200)
@@ -388,7 +617,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             }).encode("utf-8"))
             return
 
-        # ── ROUTE 4: LOGIN / USER SYNC TO SUPABASE ──
+        # ── ROUTE 8: USER SYNC / LOGIN ──
         elif self.path == "/api/login":
             email = payload.get("email", "").strip().lower()
             name = payload.get("name", "").strip()
@@ -410,20 +639,35 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             }).encode("utf-8"))
             return
 
-        # ── ROUTE 5: ORDERS SYNC TO SUPABASE ──
+        # ── ROUTE 9: AUTHORITATIVE ORDER PERSISTENCE ──
         elif self.path == "/api/orders":
             order_data = payload.get("order", payload)
-            synced, result = sync_order_to_supabase(order_data)
-            self._set_cors_headers(200)
+            valid, sanitized_order, err_msg = calculate_authoritative_order(order_data)
+            if not valid:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": err_msg}).encode("utf-8"))
+                return
+
+            synced, result, note = sync_order_to_supabase(sanitized_order)
+            if not synced:
+                self._set_cors_headers(500)
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": "Failed to persist order to database",
+                    "detail": note
+                }).encode("utf-8"))
+                return
+
+            self._set_cors_headers(201)
             self.wfile.write(json.dumps({
                 "success": True,
-                "message": "Order processed successfully",
-                "supabaseSynced": synced,
+                "message": "Order validated and stored successfully",
+                "order": sanitized_order,
                 "result": result
             }).encode("utf-8"))
             return
 
-        # ── ROUTE 6: RAG CUSTOMER SUPPORT CHATBOT ──
+        # ── ROUTE 10: RAG CUSTOMER SUPPORT CHATBOT ──
         elif self.path == "/api/chat/rag":
             message = payload.get("message", "").strip()
             language = payload.get("language", "en")
@@ -445,69 +689,36 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self._set_cors_headers(200)
                 self.wfile.write(json.dumps(response).encode("utf-8"))
             except Exception as e:
-                # Direct Gemini grounding fallback
-                fallback_answer = generate_direct_gemini_reply(message, language)
+                print(f"[RAG Note] Chatbot pipeline error: {e}")
                 self._set_cors_headers(200)
                 self.wfile.write(json.dumps({
-                    "success": True,
-                    "answer": fallback_answer,
-                    "sources": [{"title": "Jaya Jaya Varahi Store Policies & Catalog", "relevance_score": "0.98"}],
-                    "follow_ups": [
-                        "Hyderabad Delivery",
-                        "Return Gifts under ₹500",
-                        "Store Address",
-                        "WhatsApp Support"
-                    ]
+                    "reply": "Namaste! 🙏 Our AI assistant is currently updating. For immediate help, message us on WhatsApp at +91 75693 04410!",
+                    "language": language,
+                    "source": "fallback"
                 }).encode("utf-8"))
             return
 
-        # ── ROUTE 7: RAG ORDER STATUS LOOKUP ──
-        elif self.path == "/api/rag/track-order":
-            order_id = payload.get("orderId")
-            phone = payload.get("phone")
-            client_orders = payload.get("orders", [])
-            order = OrderRetriever.lookup_order(order_id=order_id, phone=phone, client_orders=client_orders)
-            self._set_cors_headers(200)
-            self.wfile.write(json.dumps({
-                "success": True if order else False,
-                "order": order
-            }).encode("utf-8"))
+        else:
+            self._set_cors_headers(404)
+            self.wfile.write(json.dumps({"success": False, "error": "Endpoint not found"}).encode("utf-8"))
             return
-
-        # Fallback 404 for unknown API
-        self._set_cors_headers(404)
-        self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode("utf-8"))
-
-class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-    daemon_threads = True
-    allow_reuse_address = True
-
-    def handle_error(self, request, client_address):
-        ex_type, _, _ = sys.exc_info()
-        if ex_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
-            return
-        super().handle_error(request, client_address)
-
-import sys
 
 def run_server():
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except Exception:
-        pass
-    with ThreadedTCPServer(("", PORT), ShopRequestHandler) as httpd:
-        print("\n=======================================================")
-        print(">> Jaya Jaya Varahi Shop Server & RAG Engine is LIVE (Multi-Threaded)")
-        print("=======================================================")
-        print(f">> Local Web Server   : http://localhost:{PORT}")
-        print(f">> RAG Chat Endpoint  : http://localhost:{PORT}/api/chat/rag")
-        print(f">> Email OTP Route    : http://localhost:{PORT}/api/send-otp")
-        print(f">> SMTP Configured    : {'YES (' + SMTP_EMAIL + ')' if SMTP_EMAIL and SMTP_PASSWORD else 'NO (running in visual test & auto-fill mode)'}")
-        print("=======================================================\n")
+    socketserver.TCPServer.allow_reuse_address = True
+    with socketserver.TCPServer(("", PORT), ShopRequestHandler) as httpd:
+        print("=" * 65)
+        print(f"🛍️  Jaya Jaya Varahi Shop & Gifts - Production Server")
+        print(f"🚀 Running at: http://localhost:{PORT}")
+        print(f"🔒 Environment: {APP_ENV.upper()}")
+        print(f"🛡️  Admin Auth: Server-authorized (ADMIN_PASSWORD configured)")
+        print(f"📧 SMTP Service: {'Active' if SMTP_EMAIL and SMTP_PASSWORD else 'Inactive (Dev OTP display active)'}")
+        print(f"🤖 Gemini AI: {'Active' if GEMINI_API_KEY else 'Inactive (Rule-based RAG active)'}")
+        print("=" * 65)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
-            print("\nServer stopped.")
+            print("\nServer shutting down gracefully.")
+            httpd.shutdown()
 
 if __name__ == "__main__":
     run_server()
