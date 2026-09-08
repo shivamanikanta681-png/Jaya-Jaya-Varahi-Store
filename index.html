@@ -525,40 +525,85 @@
                     </div>
                 </div>
             </button>
-            <!-- Provided Login / Signup split form container -->
-            <div class="container">
-                <!-- Mobile Auth Tabs Switcher (Visible on mobile screens) -->
-                <div class="mobile-auth-tabs">
-                    <button type="button" class="mobile-auth-tab active" id="mobile-tab-login" aria-label="Switch to Login">
-                        <i class='bx bx-log-in-circle'></i> Sign In
-                    </button>
-                    <button type="button" class="mobile-auth-tab" id="mobile-tab-register" aria-label="Switch to Register">
-                        <i class='bx bx-user-plus'></i> Register
-                    </button>
+            <!-- Native Digits-Style Mobile OTP Authentication Container -->
+            <div class="container digits-auth-container">
+                <!-- Left Brand Showcase Banner (Desktop View) -->
+                <div class="digits-side-banner">
+                    <div class="digits-banner-content">
+                        <div class="digits-brand-badge">
+                            <img src="images/logo.png" alt="Jaya Jaya Varahi Shop" class="digits-brand-logo">
+                            <span>Jaya Jaya Varahi Shop</span>
+                        </div>
+                        <h2 class="digits-banner-heading">Authentic Wooden Toys & Return Gifts</h2>
+                        <p class="digits-banner-desc">Instant sign-in with your mobile number. Safe, fast, and no password required.</p>
+                        <div class="digits-features-list">
+                            <div class="digits-feature-item">
+                                <i class='bx bx-check-shield'></i>
+                                <span>Fast & Secure SMS OTP Login</span>
+                            </div>
+                            <div class="digits-feature-item">
+                                <i class='bx bx-gift'></i>
+                                <span>Unlock Exclusive Daily Offers</span>
+                            </div>
+                            <div class="digits-feature-item">
+                                <i class='bx bx-cycling'></i>
+                                <span>1-3 Hr Express Hyderabad Delivery</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="form-box login">
-                    <form id="login-form">
-                        <h1>Login</h1>
-                        <div class="input-box">
-                            <input type="text" placeholder="Username" required>
-                            <i class='bx bxs-user'></i>
+                <!-- Right Authentication Flow Panel -->
+                <div class="digits-auth-panel">
+                    <!-- Step 1: Mobile Number Entry (Primary Auth) -->
+                    <div id="digits-step-phone" class="digits-step-view active">
+                        <div class="digits-view-header">
+                            <h2 class="digits-title">Login / Sign Up</h2>
+                            <p class="digits-sub">Enter your mobile number to sign in or register instantly.</p>
                         </div>
-                        <div class="input-box">
-                            <input type="password" placeholder="Password" required>
-                            <i class='bx bxs-lock-alt'></i>
+
+                        <form id="digits-phone-form" onsubmit="event.preventDefault(); window.shopApp?.handleSendMobileOtp();">
+                            <div class="digits-form-group">
+                                <label for="mobile-otp-phone-input" class="digits-label">Mobile Number</label>
+                                <div class="digits-phone-input-wrap">
+                                    <div class="digits-country-badge">
+                                        <span class="digits-flag">🇮🇳</span>
+                                        <span class="digits-dial-code">+91</span>
+                                    </div>
+                                    <input type="tel" id="mobile-otp-phone-input" class="digits-phone-input" placeholder="Enter mobile number" maxlength="14" inputmode="numeric" autocomplete="tel" required autofocus>
+                                </div>
+                                <div class="digits-field-hint">Indian 10-digit mobile number starting with 6, 7, 8, or 9</div>
+                            </div>
+
+                            <div id="digits-phone-error" class="digits-error-msg hidden" role="alert"></div>
+
+                            <button type="submit" id="btn-send-mobile-otp" class="digits-submit-btn">
+                                <span>Send OTP</span>
+                                <i class='bx bx-send'></i>
+                            </button>
+                        </form>
+
+                        <div class="digits-security-badge">
+                            <i class='bx bx-shield-check'></i>
+                            <span>100% Secure • Single-use SMS OTP</span>
                         </div>
-                        <div class="forgot-link" style="display: flex; justify-content: space-between; align-items: center; margin: -10px 0 15px 0;">
-                            <a href="#" onclick="window.shopApp?.openEmailOTPModal('reset'); return false;" style="color: #7494ec; font-size: 13.5px; font-weight: 600; text-decoration: none;">Forgot Password?</a>
-                            <a href="#" onclick="window.shopApp?.openEmailOTPModal('login'); return false;" style="color: #d97706; font-size: 13.5px; font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 4px;"><i class='bx bx-envelope'></i> Login via OTP</a>
+
+                        <div class="digits-divider">
+                            <span>or continue with</span>
                         </div>
-                        <button type="submit" class="btn">Login</button>
-                        <div class="social-divider">
-                            <span>or login with social platforms</span>
+
+                        <!-- Secondary Option: Password Login -->
+                        <div class="digits-alt-options">
+                            <button type="button" id="btn-show-password-login" class="digits-alt-link-btn" onclick="window.shopApp?.switchDigitsStep('password');">
+                                <i class='bx bx-lock-alt'></i>
+                                <span>Login with Password instead</span>
+                            </button>
                         </div>
-                        <div class="social-icons">
+
+                        <!-- Social Platforms -->
+                        <div class="social-icons digits-social-icons">
                             <button type="button" data-platform="Google" class="social-login-btn google" title="Sign in with Google" aria-label="Sign in with Google">
-                                <svg viewBox="0 0 24 24" width="34" height="34" xmlns="http://www.w3.org/2000/svg">
+                                <svg viewBox="0 0 24 24" width="30" height="30" xmlns="http://www.w3.org/2000/svg">
                                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
@@ -567,109 +612,152 @@
                                 <span class="social-tooltip">Google</span>
                             </button>
                             <button type="button" data-platform="Facebook" class="social-login-btn facebook" title="Sign in with Facebook" aria-label="Sign in with Facebook">
-                                <svg viewBox="0 0 24 24" width="34" height="34" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
+                                <svg viewBox="0 0 24 24" width="30" height="30" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                                 </svg>
                                 <span class="social-tooltip">Facebook</span>
                             </button>
                             <button type="button" data-platform="Instagram" class="social-login-btn instagram" title="Sign in with Instagram" aria-label="Sign in with Instagram">
-                                <svg viewBox="0 0 24 24" width="34" height="34" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
+                                <svg viewBox="0 0 24 24" width="30" height="30" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
                                 </svg>
                                 <span class="social-tooltip">Instagram</span>
                             </button>
                             <button type="button" data-platform="Apple" class="social-login-btn apple" title="Sign in with Apple" aria-label="Sign in with Apple">
-                                <svg viewBox="0 0 24 24" width="34" height="34" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
+                                <svg viewBox="0 0 24 24" width="30" height="30" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 1.01-2.88-.93.04-2.06.62-2.73 1.4-.59.68-1.11 1.76-.97 2.8 1.04.08 2.07-.57 2.69-1.32z"/>
                                 </svg>
                                 <span class="social-tooltip">Apple</span>
                             </button>
                             <button type="button" data-platform="WhatsApp" class="social-login-btn whatsapp" title="Sign in with WhatsApp" aria-label="Sign in with WhatsApp">
-                                <svg viewBox="0 0 24 24" width="34" height="34" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
+                                <svg viewBox="0 0 24 24" width="30" height="30" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M17.472 14.382c-.301-.15-1.782-.879-2.058-.979-.276-.1-.477-.15-.678.15-.201.3-.778.979-.954 1.18-.176.2-.351.226-.652.075s-1.272-.469-2.423-1.496c-.896-.799-1.501-1.787-1.677-2.088-.176-.301-.019-.464.132-.614.136-.135.301-.351.452-.527.15-.176.201-.301.301-.502.101-.2.05-.376-.025-.526s-.678-1.633-.929-2.235c-.244-.585-.493-.506-.678-.515-.175-.008-.376-.01-.577-.01s-.527.075-.803.376c-.276.301-1.054 1.029-1.054 2.509s1.079 2.91 1.229 3.11c.15.2 2.124 3.243 5.145 4.547.719.311 1.28.497 1.718.636.722.229 1.378.197 1.898.119.579-.087 1.782-.728 2.033-1.431.251-.703.251-1.305.176-1.431-.076-.126-.276-.201-.577-.351zm-5.467 7.423c-2.023 0-4.004-.544-5.733-1.572l-.411-.244-4.261 1.118 1.137-4.154-.268-.426C1.352 14.73 0.8 12.632 0.8 10.468 0.8 4.706 5.506 0 11.268 0c2.793 0 5.419 1.088 7.394 3.064 1.975 1.976 3.063 4.602 3.063 7.394 0 5.762-4.706 11.347-10.72 11.347z"/>
                                 </svg>
                                 <span class="social-tooltip">WhatsApp</span>
                             </button>
                         </div>
-                        <div class="mobile-switch-prompt">
-                            <span>Don't have an account?</span>
-                            <button type="button" class="mobile-switch-link-btn" id="mobile-switch-to-register">Register Now</button>
-                        </div>
-                    </form>
-                </div>
-
-                <div class="form-box register">
-                    <form id="register-form">
-                        <h1>Registration</h1>
-                        <div class="input-box">
-                            <input type="text" placeholder="Username" required>
-                            <i class='bx bxs-user'></i>
-                        </div>
-                        <div class="input-box">
-                            <input type="email" placeholder="Email" required>
-                            <i class='bx bxs-envelope'></i>
-                        </div>
-                        <div class="input-box">
-                            <input type="password" placeholder="Password" required>
-                            <i class='bx bxs-lock-alt'></i>
-                        </div>
-                        <button type="submit" class="btn">Register</button>
-                        <div class="social-divider">
-                            <span>or register with social platforms</span>
-                        </div>
-                        <div class="social-icons">
-                            <button type="button" data-platform="Google" class="social-login-btn google" title="Sign in with Google" aria-label="Sign in with Google">
-                                <svg viewBox="0 0 24 24" width="34" height="34" xmlns="http://www.w3.org/2000/svg">
-                                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                                </svg>
-                                <span class="social-tooltip">Google</span>
-                            </button>
-                            <button type="button" data-platform="Facebook" class="social-login-btn facebook" title="Sign in with Facebook" aria-label="Sign in with Facebook">
-                                <svg viewBox="0 0 24 24" width="34" height="34" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                                </svg>
-                                <span class="social-tooltip">Facebook</span>
-                            </button>
-                            <button type="button" data-platform="Instagram" class="social-login-btn instagram" title="Sign in with Instagram" aria-label="Sign in with Instagram">
-                                <svg viewBox="0 0 24 24" width="34" height="34" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-                                </svg>
-                                <span class="social-tooltip">Instagram</span>
-                            </button>
-                            <button type="button" data-platform="Apple" class="social-login-btn apple" title="Sign in with Apple" aria-label="Sign in with Apple">
-                                <svg viewBox="0 0 24 24" width="34" height="34" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 1.01-2.88-.93.04-2.06.62-2.73 1.4-.59.68-1.11 1.76-.97 2.8 1.04.08 2.07-.57 2.69-1.32z"/>
-                                </svg>
-                                <span class="social-tooltip">Apple</span>
-                            </button>
-                            <button type="button" data-platform="WhatsApp" class="social-login-btn whatsapp" title="Sign in with WhatsApp" aria-label="Sign in with WhatsApp">
-                                <svg viewBox="0 0 24 24" width="34" height="34" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M17.472 14.382c-.301-.15-1.782-.879-2.058-.979-.276-.1-.477-.15-.678.15-.201.3-.778.979-.954 1.18-.176.2-.351.226-.652.075s-1.272-.469-2.423-1.496c-.896-.799-1.501-1.787-1.677-2.088-.176-.301-.019-.464.132-.614.136-.135.301-.351.452-.527.15-.176.201-.301.301-.502.101-.2.05-.376-.025-.526s-.678-1.633-.929-2.235c-.244-.585-.493-.506-.678-.515-.175-.008-.376-.01-.577-.01s-.527.075-.803.376c-.276.301-1.054 1.029-1.054 2.509s1.079 2.91 1.229 3.11c.15.2 2.124 3.243 5.145 4.547.719.311 1.28.497 1.718.636.722.229 1.378.197 1.898.119.579-.087 1.782-.728 2.033-1.431.251-.703.251-1.305.176-1.431-.076-.126-.276-.201-.577-.351zm-5.467 7.423c-2.023 0-4.004-.544-5.733-1.572l-.411-.244-4.261 1.118 1.137-4.154-.268-.426C1.352 14.73 0.8 12.632 0.8 10.468 0.8 4.706 5.506 0 11.268 0c2.793 0 5.419 1.088 7.394 3.064 1.975 1.976 3.063 4.602 3.063 7.394 0 5.762-4.706 11.347-10.72 11.347z"/>
-                                </svg>
-                                <span class="social-tooltip">WhatsApp</span>
-                            </button>
-                        </div>
-                        <div class="mobile-switch-prompt">
-                            <span>Already have an account?</span>
-                            <button type="button" class="mobile-switch-link-btn" id="mobile-switch-to-login">Sign In</button>
-                        </div>
-                    </form>
-                </div>
-
-                <div class="toggle-box">
-                    <div class="toggle-panel toggle-left">
-                        <h1>Hello, Welcome!</h1>
-                        <p>Don't have an account?</p>
-                        <button class="btn register-btn">Register</button>
                     </div>
 
-                    <div class="toggle-panel toggle-right">
-                        <h1>Welcome Back!</h1>
-                        <p>Already have an account?</p>
-                        <button class="btn login-btn">Login</button>
+                    <!-- Step 2: Verify OTP View -->
+                    <div id="digits-step-verify" class="digits-step-view hidden">
+                        <div class="digits-view-header">
+                            <h2 class="digits-title">Verify OTP</h2>
+                            <p class="digits-sub">
+                                OTP sent to <strong id="digits-masked-phone">+91 XXXXX XXXXX</strong>
+                            </p>
+                        </div>
+
+                        <form id="digits-verify-form" onsubmit="event.preventDefault(); window.shopApp?.handleVerifyMobileOtp();">
+                            <div class="digits-form-group">
+                                <label class="digits-label">Enter 6-Digit OTP</label>
+                                <div class="digits-otp-grid" id="digits-otp-grid">
+                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="0" autocomplete="one-time-code">
+                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="1">
+                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="2">
+                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="3">
+                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="4">
+                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="5">
+                                </div>
+                            </div>
+
+                            <div id="digits-verify-error" class="digits-error-msg hidden" role="alert"></div>
+
+                            <button type="submit" id="btn-verify-mobile-otp" class="digits-submit-btn">
+                                <span>Verify OTP</span>
+                                <i class='bx bx-check-shield'></i>
+                            </button>
+                        </form>
+
+                        <div class="digits-resend-container">
+                            <span id="digits-countdown-wrap" class="digits-countdown-text">
+                                Resend OTP in <strong id="digits-resend-timer">30</strong> seconds
+                            </span>
+                            <button type="button" id="btn-resend-mobile-otp" class="digits-resend-btn hidden" onclick="window.shopApp?.handleResendMobileOtp();">
+                                <i class='bx bx-refresh'></i> Resend OTP
+                            </button>
+                        </div>
+
+                        <div class="digits-change-number-wrap">
+                            <button type="button" id="btn-change-mobile" class="digits-text-link-btn" onclick="window.shopApp?.switchDigitsStep('phone');">
+                                <i class='bx bx-edit-alt'></i> Change mobile number
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: New Customer Profile Completion View -->
+                    <div id="digits-step-profile" class="digits-step-view hidden">
+                        <div class="digits-view-header">
+                            <h2 class="digits-title">Almost Done! 🎉</h2>
+                            <p class="digits-sub">Please enter your name to complete your account.</p>
+                        </div>
+
+                        <form id="digits-profile-form" onsubmit="event.preventDefault(); window.shopApp?.handleCompleteProfile();">
+                            <div class="digits-form-group">
+                                <label for="digits-new-name" class="digits-label">Your Full Name *</label>
+                                <div class="digits-input-wrapper">
+                                    <i class='bx bx-user prefix-icon'></i>
+                                    <input type="text" id="digits-new-name" class="digits-text-input" placeholder="e.g. Ramesh Kumar" required autofocus>
+                                </div>
+                            </div>
+
+                            <div class="digits-form-group">
+                                <label for="digits-new-email" class="digits-label">Email Address (Optional)</label>
+                                <div class="digits-input-wrapper">
+                                    <i class='bx bx-envelope prefix-icon'></i>
+                                    <input type="email" id="digits-new-email" class="digits-text-input" placeholder="e.g. ramesh@example.com">
+                                </div>
+                                <div class="digits-field-hint">Used for sending order confirmation receipts & tracking updates.</div>
+                            </div>
+
+                            <div id="digits-profile-error" class="digits-error-msg hidden" role="alert"></div>
+
+                            <button type="submit" id="btn-complete-profile" class="digits-submit-btn">
+                                <span>Complete Registration & Sign In</span>
+                                <i class='bx bx-check-circle'></i>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Step 4: Password Login with Mandatory 2FA OTP -->
+                    <div id="digits-step-password" class="digits-step-view hidden">
+                        <div class="digits-view-header">
+                            <h2 class="digits-title">Login with Password</h2>
+                            <p class="digits-sub">Enter your credentials. A secure OTP will be dispatched to your registered number/email to verify.</p>
+                        </div>
+
+                        <form id="digits-password-form" onsubmit="event.preventDefault(); window.shopApp?.handlePasswordLoginSubmit();">
+                            <div class="digits-form-group">
+                                <label for="pwd-login-identifier" class="digits-label">Mobile Number or Email</label>
+                                <div class="digits-input-wrapper">
+                                    <i class='bx bx-user-pin prefix-icon'></i>
+                                    <input type="text" id="pwd-login-identifier" class="digits-text-input" placeholder="e.g. 9876543210 or email" required>
+                                </div>
+                            </div>
+
+                            <div class="digits-form-group">
+                                <label for="pwd-login-password" class="digits-label">Password</label>
+                                <div class="digits-input-wrapper">
+                                    <i class='bx bx-lock-alt prefix-icon'></i>
+                                    <input type="password" id="pwd-login-password" class="digits-text-input" placeholder="Enter your password" required>
+                                </div>
+                                <div class="digits-pwd-extra-row">
+                                    <a href="#" onclick="window.shopApp?.openEmailOTPModal('reset'); return false;" class="digits-link-sm">Forgot Password?</a>
+                                </div>
+                            </div>
+
+                            <div id="digits-password-error" class="digits-error-msg hidden" role="alert"></div>
+
+                            <button type="submit" id="btn-submit-password-login" class="digits-submit-btn">
+                                <span>Verify & Send OTP</span>
+                                <i class='bx bx-arrow-to-right'></i>
+                            </button>
+                        </form>
+
+                        <div class="digits-back-wrap">
+                            <button type="button" id="btn-back-to-mobile-otp" class="digits-text-link-btn" onclick="window.shopApp?.switchDigitsStep('phone');">
+                                <i class='bx bx-mobile-alt'></i> Return to Mobile OTP Login
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

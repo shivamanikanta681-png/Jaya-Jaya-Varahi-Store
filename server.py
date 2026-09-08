@@ -123,9 +123,9 @@ OTP_RATE_LIMITS: Dict[str, list] = {}  # key -> [timestamps]
 ADMIN_SESSIONS: Dict[str, float] = {}  # token -> expires_at
 
 # ── Cryptographic Hashing Helpers ──
-def hash_otp(email: str, otp: str) -> str:
-    """Computes a SHA-256 digest of normalized email and OTP."""
-    return hashlib.sha256(f"{email.lower().strip()}:{otp.strip()}".encode("utf-8")).hexdigest()
+def hash_otp(identifier: str, otp: str) -> str:
+    """Computes a SHA-256 digest of normalized identifier (phone or email) and OTP."""
+    return hashlib.sha256(f"{identifier.lower().strip()}:{otp.strip()}".encode("utf-8")).hexdigest()
 
 def hash_password(password: str) -> str:
     """Computes salted PBKDF2-HMAC-SHA256 password hash."""
@@ -141,6 +141,242 @@ def verify_password(stored: str, provided: str) -> bool:
         return secrets.compare_digest(h, expected)
     except Exception:
         return False
+
+# ── Indian Mobile Number Validation & Normalization ──
+def normalize_indian_phone(phone_raw: str) -> Tuple[bool, str, str]:
+    """
+    Validates and normalizes Indian mobile phone numbers.
+    Returns: (is_valid, normalized_e164, error_message)
+    Accepts: '9876543210', '+91 9876543210', '09876543210', '+91-98765-43210', etc.
+    Normalizes to standard E.164 format: '+919876543210'
+    Rejects non-digits, wrong length, repetitive dummy numbers, and non-Indian starting digits (<6).
+    """
+    if not phone_raw or not isinstance(phone_raw, str):
+        return False, "", "Mobile number is required"
+    cleaned = re.sub(r"[\s\-\(\)]+", "", phone_raw.strip())
+    if not re.match(r"^\+?[0-9]+$", cleaned):
+        return False, "", "Mobile number must contain digits only"
+
+    if cleaned.startswith("+91"):
+        digits = cleaned[3:]
+    elif cleaned.startswith("91") and len(cleaned) == 12:
+        digits = cleaned[2:]
+    elif cleaned.startswith("0") and len(cleaned) == 11:
+        digits = cleaned[1:]
+    elif len(cleaned) == 10:
+        digits = cleaned
+    else:
+        return False, "", "Please enter a valid 10-digit Indian mobile number"
+
+    if len(digits) != 10 or not digits.isdigit():
+        return False, "", "Indian mobile number must be exactly 10 digits"
+    if digits[0] not in ("6", "7", "8", "9"):
+        return False, "", "Indian mobile number must start with 6, 7, 8, or 9"
+    if len(set(digits)) == 1:
+        return False, "", "Please enter a valid personal mobile number"
+
+    return True, f"+91{digits}", ""
+
+# ── SMS OTP Provider Abstraction (Fast2SMS, Twilio, MSG91, Console) ──
+class SmsOtpProvider:
+    """Production abstraction for Indian SMS Gateways."""
+    def __init__(self):
+        self.provider = os.environ.get("SMS_PROVIDER", ENV.get("SMS_PROVIDER", "console")).strip().lower()
+        self.api_key = os.environ.get("SMS_API_KEY", ENV.get("SMS_API_KEY", "")).strip()
+        self.sender_id = os.environ.get("SMS_SENDER_ID", ENV.get("SMS_SENDER_ID", "JJVSHP")).strip()
+        self.template_id = os.environ.get("SMS_TEMPLATE_ID", ENV.get("SMS_TEMPLATE_ID", "")).strip()
+
+    def send_otp(self, phone: str, otp_code: str, purpose: str = "login") -> Tuple[bool, str]:
+        """
+        Dispatches 6-digit OTP to Indian mobile number (+91...).
+        Never exposes the API key or raw OTP in logs.
+        """
+        valid, normalized, err = normalize_indian_phone(phone)
+        if not valid:
+            return False, err
+
+        ten_digit = normalized[-10:]
+        message = f"Your Jaya Jaya Varahi Shop verification code is {otp_code}. Valid for 5 minutes. Do not share with anyone."
+
+        if self.provider == "fast2sms" and self.api_key:
+            try:
+                import urllib.request
+                url = "https://www.fast2sms.com/dev/bulkV2"
+                payload = json.dumps({
+                    "variables_values": otp_code,
+                    "route": "otp",
+                    "numbers": ten_digit
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    url,
+                    data=payload,
+                    headers={
+                        "authorization": self.api_key,
+                        "Content-Type": "application/json"
+                    },
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    resp_data = json.loads(resp.read().decode("utf-8"))
+                    if resp_data.get("return") is True or resp_data.get("status_code") in (200, 201):
+                        return True, "SMS sent via Fast2SMS"
+                    return False, resp_data.get("message", "Failed to dispatch SMS via Fast2SMS")
+            except Exception as e:
+                return False, f"Fast2SMS error: {str(e)}"
+
+        elif self.provider == "msg91" and self.api_key:
+            try:
+                import urllib.request
+                url = f"https://api.msg91.com/api/v5/otp?template_id={self.template_id}&mobile=91{ten_digit}&authkey={self.api_key}&otp={otp_code}"
+                req = urllib.request.Request(url, headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    return True, "SMS sent via MSG91"
+            except Exception as e:
+                return False, f"MSG91 error: {str(e)}"
+
+        elif self.provider == "twilio" and self.api_key:
+            try:
+                import urllib.request
+                import urllib.parse
+                import base64
+                account_sid = os.environ.get("TWILIO_ACCOUNT_SID", ENV.get("TWILIO_ACCOUNT_SID", "")).strip()
+                from_num = os.environ.get("TWILIO_PHONE_NUMBER", ENV.get("TWILIO_PHONE_NUMBER", "")).strip()
+                if account_sid and from_num:
+                    url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+                    post_data = urllib.parse.urlencode({
+                        "To": normalized,
+                        "From": from_num,
+                        "Body": message
+                    }).encode("utf-8")
+                    auth_header = "Basic " + base64.b64encode(f"{account_sid}:{self.api_key}".encode("utf-8")).decode("utf-8")
+                    req = urllib.request.Request(url, data=post_data, headers={"Authorization": auth_header}, method="POST")
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        return True, "SMS sent via Twilio"
+            except Exception as e:
+                return False, f"Twilio error: {str(e)}"
+
+        # Default fallback: console logger (safe masked phone, used in dev / test / when no SMS credentials configured)
+        masked_phone = f"{normalized[:6]}XXXX{normalized[-2:]}"
+        if APP_ENV == "development" or os.environ.get("TEST_MODE") == "1":
+            print(f">> [SmsOtpProvider: Console] Simulated OTP dispatch to {masked_phone} (purpose: {purpose})")
+            return True, "Simulated SMS dispatched (Console Provider)"
+        else:
+            return False, "SMS provider not configured on server"
+
+SMS_PROVIDER_INSTANCE = SmsOtpProvider()
+
+# ── Persistent OTP Storage (Supabase Table 'otps' with In-Memory Fallback for Vercel) ──
+def store_otp_record(identifier: str, otp_code: str, purpose: str = "login", user_name: str = "", expires_in_seconds: int = 300) -> Dict[str, Any]:
+    """Stores salted SHA-256 OTP record in memory and attempts persistence to Supabase."""
+    expires_at = time.time() + expires_in_seconds
+    is_already_hash = isinstance(otp_code, str) and len(otp_code) == 64 and all(c in '0123456789abcdefABCDEF' for c in otp_code)
+    otp_h = otp_code if is_already_hash else hash_otp(identifier, otp_code)
+    record = {
+        "otp_hash": otp_h,
+        "expires_at": expires_at,
+        "attempts": 0,
+        "verified": False,
+        "purpose": purpose,
+        "user_name": user_name
+    }
+    OTP_CACHE[identifier] = record
+
+    try:
+        from supabase_client import get_supabase
+        client = get_supabase(admin=True)
+        try:
+            client.table("otps").delete().eq("identifier", identifier).execute()
+        except Exception:
+            pass
+        client.table("otps").insert({
+            "identifier": identifier,
+            "otp_hash": otp_h,
+            "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at)),
+            "attempts": 0,
+            "purpose": purpose,
+            "verified": False,
+            "user_name": user_name
+        }).execute()
+    except Exception as e:
+        if APP_ENV == "development":
+            print(f"[Supabase OTP Persistence Note] {e}")
+
+    return record
+
+def retrieve_otp_record(identifier: str) -> Optional[Dict[str, Any]]:
+    """Retrieves OTP record from Supabase 'otps' table or local fallback cache."""
+    now = time.time()
+
+    # 1. Check Supabase persistent table first (vital for Vercel serverless lambdas)
+    try:
+        from supabase_client import get_supabase
+        client = get_supabase(admin=True)
+        res = client.table("otps").select("*").eq("identifier", identifier).order("created_at", desc=True).limit(1).execute()
+        if res and res.data and len(res.data) > 0:
+            db_row = res.data[0]
+            from datetime import datetime
+            exp_str = db_row["expires_at"].replace("Z", "+00:00")
+            dt = datetime.fromisoformat(exp_str)
+            exp_ts = dt.timestamp()
+            if exp_ts < now:
+                # Expired - delete from database and return None
+                try:
+                    client.table("otps").delete().eq("identifier", identifier).execute()
+                except Exception:
+                    pass
+                return None
+
+            return {
+                "id": db_row.get("id"),
+                "otp_hash": db_row.get("otp_hash"),
+                "expires_at": exp_ts,
+                "attempts": int(db_row.get("attempts", 0)),
+                "verified": bool(db_row.get("verified", False)),
+                "purpose": db_row.get("purpose", "login"),
+                "user_name": db_row.get("user_name", "")
+            }
+    except Exception:
+        pass
+
+    # 2. Fall back to in-memory OTP_CACHE
+    cached = OTP_CACHE.get(identifier)
+    if cached:
+        if cached.get("expires_at", 0) < now:
+            OTP_CACHE.pop(identifier, None)
+            return None
+        return cached
+
+    return None
+
+def increment_otp_attempts(identifier: str, current_record: Optional[Dict[str, Any]] = None) -> int:
+    """Increments failed verification attempts counter and updates storage."""
+    if current_record is None:
+        current_record = retrieve_otp_record(identifier) or OTP_CACHE.get(identifier)
+    if not current_record:
+        return 0
+
+    new_attempts = current_record.get("attempts", 0) + 1
+    current_record["attempts"] = new_attempts
+    if identifier in OTP_CACHE:
+        OTP_CACHE[identifier]["attempts"] = new_attempts
+
+    try:
+        from supabase_client import get_supabase
+        client = get_supabase(admin=True)
+        client.table("otps").update({"attempts": new_attempts}).eq("identifier", identifier).execute()
+    except Exception:
+        pass
+    return new_attempts
+
+def delete_otp_record(identifier: str):
+    """Consumes and invalidates an OTP record to prevent replay."""
+    OTP_CACHE.pop(identifier, None)
+    try:
+        from supabase_client import get_supabase
+        client = get_supabase(admin=True)
+        client.table("otps").delete().eq("identifier", identifier).execute()
+    except Exception:
+        pass
 
 def validate_admin_product(product: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
     """Validates admin product CRUD payload fields, lengths, and types."""
@@ -289,29 +525,106 @@ Boduppal, Hyderabad
     except Exception as e:
         return False, f"SMTP Error: {str(e)}"
 
-def sync_user_to_supabase(email: str, name: Optional[str] = None, platform: str = "Website Account") -> Tuple[bool, str]:
-    """Inserts or updates user in Supabase 'users' table using service client."""
+def sync_user_to_supabase(
+    identifier: str,
+    name: Optional[str] = None,
+    platform: str = "Mobile OTP Account",
+    phone: Optional[str] = None,
+    email: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Inserts or updates user in Supabase 'users' table using service client.
+    Supports both Indian mobile numbers (+91...) and email addresses.
+    Prevents duplicate accounts for the same normalized phone number.
+    """
     try:
         from supabase_client import get_supabase
         client = get_supabase(admin=True)
-        # Check if user already exists
-        existing = client.table("users").select("id, email").eq("email", email).execute()
-        if existing.data and len(existing.data) > 0:
-            user_id = existing.data[0].get("id")
-            client.table("users").update({
-                "last_login": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "platform": platform
-            }).eq("id", user_id).execute()
-            return True, f"User already exists in Supabase (id: {user_id})"
 
-        res = client.table("users").insert({
-            "email": email,
-            "name": name or email.split("@")[0].capitalize(),
-            "platform": platform
-        }).execute()
-        return True, "Successfully inserted into Supabase 'users' table"
+        is_phone = bool(re.match(r"^\+?[0-9\s\-]+$", identifier) or (phone and not email))
+        normalized_phone = None
+        clean_email = None
+
+        if is_phone:
+            valid_p, norm_p, _ = normalize_indian_phone(phone or identifier)
+            if valid_p:
+                normalized_phone = norm_p
+        elif "@" in identifier:
+            clean_email = identifier.strip().lower()
+
+        if email and "@" in email:
+            clean_email = email.strip().lower()
+
+        # Check existing by normalized phone or email
+        existing_user = None
+        if normalized_phone:
+            try:
+                res = client.table("users").select("*").eq("phone_normalized", normalized_phone).limit(1).execute()
+                if res and res.data and len(res.data) > 0:
+                    existing_user = res.data[0]
+            except Exception:
+                pass
+
+        if not existing_user and clean_email:
+            try:
+                res = client.table("users").select("*").eq("email", clean_email).limit(1).execute()
+                if res and res.data and len(res.data) > 0:
+                    existing_user = res.data[0]
+            except Exception:
+                pass
+
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        if existing_user:
+            user_id = existing_user.get("id")
+            update_data = {
+                "last_login": now_iso,
+                "platform": platform
+            }
+            if name and not existing_user.get("name"):
+                update_data["name"] = name
+            if clean_email and not existing_user.get("email"):
+                update_data["email"] = clean_email
+            if normalized_phone and not existing_user.get("phone_normalized"):
+                update_data["phone_normalized"] = normalized_phone
+                update_data["phone"] = normalized_phone
+
+            try:
+                client.table("users").update(update_data).eq("id", user_id).execute()
+            except Exception:
+                pass
+            existing_user.update(update_data)
+            return True, f"User synced (id: {user_id})", existing_user
+
+        # New user insert
+        display_name = name or (normalized_phone[-4:] if normalized_phone else clean_email.split("@")[0].capitalize())
+        new_row = {
+            "name": display_name,
+            "platform": platform,
+            "created_at": now_iso,
+            "last_login": now_iso
+        }
+        if normalized_phone:
+            new_row["phone_normalized"] = normalized_phone
+            new_row["phone"] = normalized_phone
+        if clean_email:
+            new_row["email"] = clean_email
+
+        ins_res = client.table("users").insert(new_row).execute()
+        created_user = ins_res.data[0] if ins_res and ins_res.data else new_row
+        return True, "User registered successfully in Supabase", created_user
     except Exception as e:
-        return False, str(e)
+        if os.environ.get("TEST_MODE") == "1" or APP_ENV == "development":
+            fallback_user = {
+                "id": f"test_{int(time.time())}",
+                "name": name or (normalized_phone[-4:] if normalized_phone else "Customer"),
+                "phone_normalized": normalized_phone,
+                "phone": normalized_phone,
+                "email": clean_email,
+                "platform": platform
+            }
+            return True, f"Dev/Test fallback: {e}", fallback_user
+        return False, str(e), None
 
 def calculate_authoritative_order(order_payload: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
     """
@@ -641,19 +954,33 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": f"Product update error: {str(e)}"}).encode("utf-8"))
             return
 
-        # ── ROUTE 5: SEND OTP (Cryptographic, Hashed & Rate Limited) ──
+        # ── ROUTE 5: SEND OTP (Mobile SMS & Email, Cryptographically Secure & Rate Limited) ──
         elif req_path == "/api/send-otp":
-            email = payload.get("email", "").strip().lower()
-            mode = payload.get("mode", "reset")
+            phone_raw = payload.get("phone") or payload.get("mobileNumber")
+            email_raw = payload.get("email")
+            purpose = str(payload.get("purpose") or payload.get("mode") or "login").strip().lower()
             client_ip = self.client_address[0] if self.client_address else "unknown"
 
-            if not email or "@" not in email:
+            identifier = None
+            is_phone = False
+
+            if phone_raw:
+                valid_phone, norm_phone, phone_err = normalize_indian_phone(str(phone_raw))
+                if not valid_phone:
+                    self._set_cors_headers(400)
+                    self.wfile.write(json.dumps({"success": False, "error": phone_err}).encode("utf-8"))
+                    return
+                identifier = norm_phone
+                is_phone = True
+            elif email_raw and "@" in str(email_raw):
+                identifier = str(email_raw).strip().lower()
+            else:
                 self._set_cors_headers(400)
-                self.wfile.write(json.dumps({"success": False, "error": "A valid email address is required"}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "error": "A valid 10-digit Indian mobile number or email is required"}).encode("utf-8"))
                 return
 
-            # Rate limiting checks
-            rate_limited, rate_msg = is_rate_limited(f"email:{email}", max_requests=3, window_seconds=600, cooldown_seconds=60)
+            # Rate limiting checks: Max 3 requests per identifier per 15 minutes, 30s cooldown
+            rate_limited, rate_msg = is_rate_limited(f"otp:{identifier}", max_requests=3, window_seconds=900, cooldown_seconds=30)
             if rate_limited:
                 self._set_cors_headers(429)
                 self.wfile.write(json.dumps({"success": False, "error": rate_msg}).encode("utf-8"))
@@ -665,107 +992,255 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": "Too many requests from this network. Please try again later."}).encode("utf-8"))
                 return
 
-            # Cryptographically secure 6-digit random code
+            # Cryptographically secure 6-digit random code (secrets)
             otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
-            expires_at = time.time() + 300  # 5 minutes expiry
 
-            # Store only hashed OTP in cache for cryptographic security
-            OTP_CACHE[email] = {
-                "otp_hash": hash_otp(email, otp_code),
-                "expires_at": expires_at,
-                "attempts": 0,
-                "verified": False,
-                "mode": mode
-            }
+            # Store hashed OTP in Supabase and memory (Never store plaintext)
+            store_otp_record(identifier, otp_code, purpose=purpose)
 
-            email_sent, status_note = send_real_email(email, otp_code, mode)
-
-            if APP_ENV == "development":
-                print(f">> [OTP Dev Mode] Verification code generated for {email} (SMTP active: {email_sent})")
+            # Dispatch via SMS provider or SMTP email
+            dispatch_success = False
+            status_note = ""
+            if is_phone:
+                dispatch_success, status_note = SMS_PROVIDER_INSTANCE.send_otp(identifier, otp_code, purpose=purpose)
             else:
-                print(f">> [OTP] Verification request processed for {email} (SMTP active: {email_sent})")
+                dispatch_success, status_note = send_real_email(identifier, otp_code, mode=purpose)
 
-            # In production, if SMTP is configured and fails, return service unavailable
-            if APP_ENV == "production" and not email_sent:
+            # In production, if real delivery failed, report service unavailable
+            if APP_ENV == "production" and not dispatch_success:
                 self._set_cors_headers(503)
-                self.wfile.write(json.dumps({"success": False, "error": "Email delivery service temporarily unavailable"}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "error": "Delivery service temporarily unavailable. Please try again later."}).encode("utf-8"))
                 return
 
-            response_data = {
-                "success": True,
-                "message": f"Verification code sent to {email}",
-                "email": email,
-                "expiresIn": 300,
-                "hasSmtpConfigured": email_sent
-            }
+            # Masked identifier for UI feedback (e.g. +91 98765 XXXXX)
+            if is_phone:
+                masked_id = f"{identifier[:6]} XXXXX"
+                msg = f"OTP sent to {masked_id}"
+            else:
+                parts = identifier.split("@")
+                masked_id = f"{parts[0][:2]}***@{parts[1]}" if len(parts[0]) > 2 else identifier
+                msg = f"Verification code sent to {masked_id}"
 
-            # In dev mode without SMTP, deliver code for testing
-            if APP_ENV == "development" and not email_sent:
-                response_data["devOtp"] = otp_code
-
+            # SECURITY: The OTP is NEVER returned in the API response
             self._set_cors_headers(200)
-            self.wfile.write(json.dumps(response_data).encode("utf-8"))
+            self.wfile.write(json.dumps({
+                "success": True,
+                "message": msg,
+                "identifier": masked_id,
+                "expiresIn": 300,
+                "cooldownSeconds": 30
+            }).encode("utf-8"))
             return
 
-        # ── ROUTE 6: VERIFY OTP ──
+        # ── ROUTE 6: VERIFY OTP (Mobile SMS & Email Authentication) ──
         elif req_path == "/api/verify-otp":
-            email = payload.get("email", "").strip().lower()
+            phone_raw = payload.get("phone") or payload.get("mobileNumber")
+            email_raw = payload.get("email")
             entered_otp = str(payload.get("otp", "")).strip()
+            name_raw = str(payload.get("name", "")).strip()
 
-            record = OTP_CACHE.get(email)
+            identifier = None
+            is_phone = False
+            if phone_raw:
+                valid_phone, norm_phone, phone_err = normalize_indian_phone(str(phone_raw))
+                if not valid_phone:
+                    self._set_cors_headers(400)
+                    self.wfile.write(json.dumps({"success": False, "error": phone_err}).encode("utf-8"))
+                    return
+                identifier = norm_phone
+                is_phone = True
+            elif email_raw and "@" in str(email_raw):
+                identifier = str(email_raw).strip().lower()
+            else:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": "Mobile number or email is required"}).encode("utf-8"))
+                return
+
+            if not entered_otp or len(entered_otp) != 6 or not entered_otp.isdigit():
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": "Please enter a valid 6-digit OTP code."}).encode("utf-8"))
+                return
+
+            record = retrieve_otp_record(identifier)
             if not record:
                 self._set_cors_headers(404)
-                self.wfile.write(json.dumps({"success": False, "error": "No pending OTP request found for this email."}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "error": "No pending OTP request found. Please request a new OTP."}).encode("utf-8"))
                 return
 
             if time.time() > record["expires_at"]:
-                del OTP_CACHE[email]
+                delete_otp_record(identifier)
                 self._set_cors_headers(400)
-                self.wfile.write(json.dumps({"success": False, "error": "OTP has expired. Please request a fresh code."}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "error": "OTP expired. Please request a new OTP."}).encode("utf-8"))
                 return
 
             if record["attempts"] >= 5:
-                del OTP_CACHE[email]
+                delete_otp_record(identifier)
                 self._set_cors_headers(429)
                 self.wfile.write(json.dumps({"success": False, "error": "Too many failed attempts. Please request a new code."}).encode("utf-8"))
                 return
 
-            # Compare SHA-256 hash of entered OTP
-            if hash_otp(email, entered_otp) == record["otp_hash"]:
-                record["verified"] = True
-                verification_token = secrets.token_hex(24)
-                record["verify_token"] = verification_token
-                sync_user_to_supabase(email, platform="Email OTP Verified")
-                self._set_cors_headers(200)
-                self.wfile.write(json.dumps({
-                    "success": True,
-                    "verified": True,
-                    "message": "OTP verified successfully!",
-                    "email": email,
-                    "token": verification_token
-                }).encode("utf-8"))
-                return
-            else:
-                record["attempts"] += 1
-                remaining = 5 - record["attempts"]
+            # Constant-time comparison of SHA-256 hash
+            expected_hash = record["otp_hash"]
+            provided_hash = hash_otp(identifier, entered_otp)
+            if not secrets.compare_digest(provided_hash, expected_hash):
+                new_attempts = increment_otp_attempts(identifier, record)
+                remaining = 5 - new_attempts
                 self._set_cors_headers(400)
                 self.wfile.write(json.dumps({
                     "success": False,
-                    "error": f"Invalid verification code. {remaining} attempt(s) remaining."
+                    "error": f"Invalid OTP. {remaining} attempt(s) remaining." if remaining > 0 else "Too many failed attempts. Please request a new code."
                 }).encode("utf-8"))
                 return
 
-        # ── ROUTE 7: RESET PASSWORD ──
+            # Verification SUCCESS: Consume OTP immediately (prevents replay attack)
+            delete_otp_record(identifier)
+
+            # Check existing user in Supabase
+            existing_user = None
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                if is_phone:
+                    res = client.table("users").select("*").eq("phone_normalized", identifier).limit(1).execute()
+                    if res and res.data and len(res.data) > 0:
+                        existing_user = res.data[0]
+                else:
+                    res = client.table("users").select("*").eq("email", identifier).limit(1).execute()
+                    if res and res.data and len(res.data) > 0:
+                        existing_user = res.data[0]
+            except Exception as e:
+                print(f"[Supabase user lookup note] {e}")
+
+            session_token = secrets.token_hex(32)
+
+            if existing_user:
+                # Existing customer: established authenticated session
+                try:
+                    from supabase_client import get_supabase
+                    client = get_supabase(admin=True)
+                    client.table("users").update({
+                        "last_login": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    }).eq("id", existing_user["id"]).execute()
+                except Exception:
+                    pass
+
+                self._set_cors_headers(200)
+                self.wfile.write(json.dumps({
+                    "success": True,
+                    "isNewUser": False,
+                    "message": "Login successful",
+                    "sessionToken": session_token,
+                    "user": {
+                        "id": existing_user["id"],
+                        "name": existing_user.get("name") or (identifier[-4:] if is_phone else identifier.split("@")[0].capitalize()),
+                        "phone": existing_user.get("phone_normalized") or existing_user.get("phone"),
+                        "email": existing_user.get("email")
+                    }
+                }).encode("utf-8"))
+                return
+
+            else:
+                # New customer: If name was passed with verify, create profile immediately
+                if name_raw:
+                    synced, note, user_row = sync_user_to_supabase(
+                        identifier=identifier,
+                        name=name_raw,
+                        platform="Mobile OTP Registration" if is_phone else "Email OTP Registration",
+                        phone=identifier if is_phone else None,
+                        email=identifier if not is_phone else None
+                    )
+                    user_id = (user_row or {}).get("id") or str(secrets.token_hex(8))
+
+                    self._set_cors_headers(200)
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "isNewUser": False,
+                        "message": "Account created and logged in successfully!",
+                        "sessionToken": session_token,
+                        "user": {
+                            "id": user_id,
+                            "name": name_raw,
+                            "phone": identifier if is_phone else None,
+                            "email": identifier if not is_phone else None
+                        }
+                    }).encode("utf-8"))
+                    return
+                else:
+                    # Prompt frontend to complete profile with Name
+                    reg_token = secrets.token_hex(24)
+                    self._set_cors_headers(200)
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "isNewUser": true,
+                        "message": "OTP verified successfully. Please provide your name to complete registration.",
+                        "token": reg_token,
+                        "identifier": identifier,
+                        "isPhone": is_phone
+                    }).encode("utf-8"))
+                    return
+
+        # ── ROUTE 7: COMPLETE REGISTRATION (Set Name for New OTP User) ──
+        elif req_path == "/api/register/complete":
+            phone_raw = payload.get("phone") or payload.get("identifier")
+            email_raw = payload.get("email")
+            name = str(payload.get("name", "")).strip()
+
+            if not name:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": "Your name is required to complete registration."}).encode("utf-8"))
+                return
+
+            identifier = None
+            is_phone = False
+            if phone_raw and re.match(r"^\+?[0-9\s\-]+$", str(phone_raw)):
+                valid_p, norm_p, p_err = normalize_indian_phone(str(phone_raw))
+                if not valid_p:
+                    self._set_cors_headers(400)
+                    self.wfile.write(json.dumps({"success": False, "error": p_err}).encode("utf-8"))
+                    return
+                identifier = norm_p
+                is_phone = True
+            elif email_raw and "@" in str(email_raw):
+                identifier = str(email_raw).strip().lower()
+            else:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": "Valid phone or email identifier required."}).encode("utf-8"))
+                return
+
+            synced, note, user_row = sync_user_to_supabase(
+                identifier=identifier,
+                name=name,
+                platform="Mobile OTP Registration" if is_phone else "Email OTP Registration",
+                phone=identifier if is_phone else None,
+                email=str(email_raw).strip().lower() if email_raw and "@" in str(email_raw) else (identifier if not is_phone else None)
+            )
+
+            session_token = secrets.token_hex(32)
+            user_id = (user_row or {}).get("id") or str(secrets.token_hex(8))
+
+            self._set_cors_headers(200)
+            self.wfile.write(json.dumps({
+                "success": True,
+                "message": f"Welcome to Jaya Jaya Varahi Store, {name}!",
+                "sessionToken": session_token,
+                "user": {
+                    "id": user_id,
+                    "name": name,
+                    "phone": identifier if is_phone else None,
+                    "email": (user_row or {}).get("email")
+                }
+            }).encode("utf-8"))
+            return
+
+        # ── ROUTE 8: RESET PASSWORD (Requires Valid OTP) ──
         elif req_path == "/api/reset-password":
-            email = payload.get("email", "").strip().lower()
+            identifier = payload.get("phone") or payload.get("email", "").strip().lower()
             entered_otp = str(payload.get("otp", "")).strip()
             new_password = payload.get("newPassword", "").strip()
 
-            record = OTP_CACHE.get(email)
-            otp_valid = record and (record.get("verified") or (entered_otp and record.get("otp_hash") == hash_otp(email, entered_otp)))
-            if not otp_valid:
-                self._set_cors_headers(403)
-                self.wfile.write(json.dumps({"success": False, "error": "Valid OTP verification required before resetting password."}).encode("utf-8"))
+            if not identifier:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": "Email or mobile number is required"}).encode("utf-8"))
                 return
 
             if len(new_password) < 6:
@@ -773,22 +1248,26 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": "Password must be at least 6 characters long."}).encode("utf-8"))
                 return
 
-            OTP_CACHE.pop(email, None)
+            record = retrieve_otp_record(identifier)
+            otp_valid = record and (record.get("verified") or (entered_otp and record.get("otp_hash") == hash_otp(identifier, entered_otp)))
+            if not otp_valid:
+                self._set_cors_headers(403)
+                self.wfile.write(json.dumps({"success": False, "error": "Valid OTP verification required before resetting password."}).encode("utf-8"))
+                return
+
+            delete_otp_record(identifier)
             pwd_hash = hash_password(new_password)
             updated_db = False
             try:
                 from supabase_client import get_supabase
                 client = get_supabase(admin=True)
-                res = client.table("users").update({"password_hash": pwd_hash, "platform": "Password Reset"}).eq("email", email).execute()
-                if res.data and len(res.data) > 0:
-                    updated_db = True
+                if "@" in identifier:
+                    res = client.table("users").update({"password_hash": pwd_hash, "platform": "Password Reset"}).eq("email", identifier).execute()
                 else:
-                    client.table("users").insert({
-                        "email": email,
-                        "name": email.split("@")[0].capitalize(),
-                        "password_hash": pwd_hash,
-                        "platform": "Password Reset"
-                    }).execute()
+                    _, norm_phone, _ = normalize_indian_phone(identifier)
+                    res = client.table("users").update({"password_hash": pwd_hash, "platform": "Password Reset"}).eq("phone_normalized", norm_phone).execute()
+
+                if res.data and len(res.data) > 0:
                     updated_db = True
             except Exception as db_err:
                 print(f"[Password Reset] DB update note: {db_err}")
@@ -796,77 +1275,104 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             self._set_cors_headers(200)
             self.wfile.write(json.dumps({
                 "success": True,
-                "message": "Password reset successfully! You can now log in with your new password.",
-                "email": email,
+                "message": "Password reset successfully! You can now log in.",
+                "identifier": identifier,
                 "persisted": updated_db
             }).encode("utf-8"))
             return
 
-        # ── ROUTE 8: PASSWORD AUTHENTICATION ──
+        # ── ROUTE 9: PASSWORD VALIDATION -> MANDATORY OTP DISPATCH (NEVER DIRECT LOGIN) ──
         elif req_path == "/api/login/password":
-            email = payload.get("email", "").strip().lower()
+            identifier = str(payload.get("identifier") or payload.get("email") or payload.get("phone") or "").strip()
             password = payload.get("password", "").strip()
 
-            if not email or not password:
+            if not identifier or not password:
                 self._set_cors_headers(400)
-                self.wfile.write(json.dumps({"success": False, "error": "Email and password are required"}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "error": "Mobile/Email and password are required"}).encode("utf-8"))
                 return
 
             try:
                 from supabase_client import get_supabase
                 client = get_supabase(admin=True)
-                res = client.table("users").select("id, email, name, password_hash").eq("email", email).maybe_single().execute()
-                user_row = res.data if res else None
+
+                user_row = None
+                if "@" in identifier:
+                    res = client.table("users").select("id, email, phone, phone_normalized, name, password_hash").eq("email", identifier.lower()).maybe_single().execute()
+                    user_row = res.data if res else None
+                else:
+                    valid_p, norm_p, _ = normalize_indian_phone(identifier)
+                    if valid_p:
+                        res = client.table("users").select("id, email, phone, phone_normalized, name, password_hash").eq("phone_normalized", norm_p).maybe_single().execute()
+                        user_row = res.data if res else None
 
                 if not user_row or not user_row.get("password_hash"):
                     self._set_cors_headers(401)
-                    self.wfile.write(json.dumps({"success": False, "error": "Invalid email or password. Use Email OTP to log in or reset your password."}).encode("utf-8"))
+                    self.wfile.write(json.dumps({"success": False, "error": "Invalid credentials. Use Mobile OTP to log in or reset your password."}).encode("utf-8"))
                     return
 
                 if not verify_password(user_row["password_hash"], password):
                     self._set_cors_headers(401)
-                    self.wfile.write(json.dumps({"success": False, "error": "Invalid email or password"}).encode("utf-8"))
+                    self.wfile.write(json.dumps({"success": False, "error": "Invalid password"}).encode("utf-8"))
                     return
 
-                session_token = secrets.token_hex(24)
-                client.table("users").update({"last_login": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}).eq("id", user_row["id"]).execute()
+                # CREDENTIALS ARE VALID!
+                # STRICT REQUIREMENT: DO NOT LOG IN DIRECTLY. DISPATCH OTP TO REGISTERED MOBILE/EMAIL.
+                target_phone = user_row.get("phone_normalized") or user_row.get("phone")
+                target_email = user_row.get("email")
+
+                otp_target = target_phone or target_email
+                is_phone = bool(target_phone)
+
+                otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
+                store_otp_record(otp_target, otp_code, purpose="login_password_step2")
+
+                if is_phone:
+                    SMS_PROVIDER_INSTANCE.send_otp(target_phone, otp_code, purpose="login")
+                    masked = f"{target_phone[:6]} XXXXX"
+                    msg = f"Credentials verified. 6-digit OTP sent to your registered mobile {masked}."
+                else:
+                    send_real_email(target_email, otp_code, mode="login")
+                    parts = target_email.split("@")
+                    masked = f"{parts[0][:2]}***@{parts[1]}"
+                    msg = f"Credentials verified. 6-digit OTP sent to your registered email {masked}."
 
                 self._set_cors_headers(200)
                 self.wfile.write(json.dumps({
                     "success": True,
-                    "message": "Authentication successful",
-                    "user": {
-                        "id": user_row.get("id"),
-                        "email": user_row.get("email"),
-                        "name": user_row.get("name")
-                    },
-                    "token": session_token
+                    "requiresOtp": True,
+                    "phone": target_phone,
+                    "email": target_email,
+                    "identifier": otp_target,
+                    "maskedTarget": masked,
+                    "message": msg
                 }).encode("utf-8"))
                 return
             except Exception as e:
                 self._set_cors_headers(500)
-                self.wfile.write(json.dumps({"success": False, "error": f"Authentication error: {str(e)}"}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "error": f"Authentication check error: {str(e)}"}).encode("utf-8"))
                 return
 
-        # ── ROUTE 9: USER PROFILE SYNC (Profile Data Only, Not Authentication) ──
+        # ── ROUTE 10: USER PROFILE SYNC (Profile Data Only, Not Authentication) ──
         elif req_path in ("/api/users/sync", "/api/login"):
-            email = payload.get("email", "").strip().lower()
+            email = payload.get("email")
+            phone = payload.get("phone")
             name = payload.get("name", "").strip()
             platform = payload.get("platform", "Website Account")
 
-            if not email:
+            identifier = phone or email
+            if not identifier:
                 self._set_cors_headers(400)
-                self.wfile.write(json.dumps({"success": False, "error": "Email is required"}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "error": "Phone or email is required"}).encode("utf-8"))
                 return
 
-            synced, note = sync_user_to_supabase(email, name, platform)
+            synced, note, user_row = sync_user_to_supabase(identifier, name=name, platform=platform, phone=phone, email=email)
             self._set_cors_headers(200)
             self.wfile.write(json.dumps({
                 "success": True,
-                "message": f"Profile synchronized for {email}",
-                "email": email,
+                "message": f"Profile synchronized for {identifier}",
                 "supabaseSynced": synced,
-                "note": note
+                "note": note,
+                "user": user_row
             }).encode("utf-8"))
             return
 

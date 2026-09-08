@@ -6656,3 +6656,595 @@ body.dark-mode .chat-product-title {
   white-space: nowrap !important;
   border: 0 !important;
 }
+
+/* ==========================================================================
+   NATIVE DIGITS-STYLE MOBILE SMS OTP AUTHENTICATION SYSTEM
+   ========================================================================== */
+.container.digits-auth-container {
+  display: flex !important;
+  flex-direction: row !important;
+  width: 780px !important;
+  max-width: 95vw !important;
+  min-height: 520px !important;
+  height: auto !important;
+  border-radius: 28px !important;
+  background: #ffffff !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35) !important;
+  overflow: hidden !important;
+  position: relative !important;
+  padding: 0 !important;
+}
+
+/* Left Brand Showcase Banner (Desktop) */
+.digits-side-banner {
+  width: 40% !important;
+  background: linear-gradient(150deg, #78350f 0%, #b45309 50%, #d97706 100%) !important;
+  color: #ffffff !important;
+  padding: 38px 28px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  position: relative !important;
+}
+
+.digits-side-banner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 80% 20%, rgba(254, 243, 199, 0.15), transparent 60%);
+  pointer-events: none;
+}
+
+.digits-banner-content {
+  position: relative;
+  z-index: 1;
+}
+
+.digits-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  padding: 6px 14px;
+  border-radius: 50px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fef3c7;
+  border: 1px solid rgba(254, 243, 199, 0.25);
+  margin-bottom: 24px;
+}
+
+.digits-brand-logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: contain;
+}
+
+.digits-banner-heading {
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  line-height: 1.3 !important;
+  color: #ffffff !important;
+  margin: 0 0 12px 0 !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.digits-banner-desc {
+  font-size: 13.5px !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  line-height: 1.5 !important;
+  margin: 0 0 28px 0 !important;
+}
+
+.digits-features-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.digits-feature-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fef3c7;
+}
+
+.digits-feature-item i {
+  font-size: 18px;
+  color: #fef08a;
+  flex-shrink: 0;
+}
+
+/* Right Interactive Authentication Panel */
+.digits-auth-panel {
+  width: 60% !important;
+  padding: 34px 32px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  background: #ffffff !important;
+  position: relative !important;
+}
+
+.digits-step-view {
+  display: none !important;
+  flex-direction: column !important;
+  animation: digitsFadeIn 0.25s ease-out;
+}
+
+.digits-step-view.active {
+  display: flex !important;
+}
+
+@keyframes digitsFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.digits-view-header {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.digits-title {
+  font-size: 23px !important;
+  font-weight: 800 !important;
+  color: #1e293b !important;
+  margin: 0 0 6px 0 !important;
+  letter-spacing: -0.3px;
+}
+
+.digits-sub {
+  font-size: 13.5px !important;
+  color: #64748b !important;
+  margin: 0 !important;
+  line-height: 1.45 !important;
+}
+
+.digits-form-group {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.digits-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.digits-phone-input-wrap {
+  display: flex;
+  align-items: center;
+  border: 2px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.digits-phone-input-wrap:focus-within {
+  border-color: #d97706;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+}
+
+.digits-country-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 14px;
+  background: #f1f5f9;
+  border-right: 1px solid #cbd5e1;
+  font-weight: 700;
+  font-size: 14px;
+  color: #1e293b;
+  user-select: none;
+}
+
+.digits-flag {
+  font-size: 16px;
+}
+
+.digits-dial-code {
+  font-size: 14px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.digits-phone-input {
+  flex: 1;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  padding: 12px 14px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+  width: 100% !important;
+}
+
+.digits-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.digits-input-wrapper .prefix-icon {
+  position: absolute;
+  left: 14px;
+  font-size: 18px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.digits-text-input {
+  width: 100% !important;
+  padding: 12px 14px 12px 42px !important;
+  border: 2px solid #cbd5e1 !important;
+  border-radius: 12px !important;
+  font-size: 14.5px !important;
+  color: #0f172a !important;
+  background: #f8fafc !important;
+  transition: all 0.2s ease !important;
+  outline: none !important;
+}
+
+.digits-text-input:focus {
+  border-color: #d97706 !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15) !important;
+}
+
+.digits-field-hint {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* 6-Digit OTP Grid */
+.digits-otp-grid {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 10px 0 16px;
+}
+
+.digits-otp-cell {
+  width: 48px !important;
+  height: 54px !important;
+  border: 2px solid #cbd5e1 !important;
+  border-radius: 12px !important;
+  text-align: center !important;
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  color: #1e293b !important;
+  background: #f8fafc !important;
+  outline: none !important;
+  padding: 0 !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+.digits-otp-cell:focus {
+  border-color: #d97706 !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.18) !important;
+  transform: translateY(-1px);
+}
+
+.digits-submit-btn {
+  width: 100% !important;
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 12px !important;
+  padding: 13px 20px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 14px rgba(180, 83, 9, 0.28) !important;
+  transition: all 0.2s ease !important;
+  margin-top: 8px;
+}
+
+.digits-submit-btn:hover {
+  background: linear-gradient(135deg, #b45309 0%, #92400e 100%) !important;
+  box-shadow: 0 6px 18px rgba(180, 83, 9, 0.38) !important;
+  transform: translateY(-1px);
+}
+
+.digits-submit-btn:active {
+  transform: translateY(0);
+}
+
+.digits-submit-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.digits-error-msg {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 9px 12px;
+  border-radius: 9px;
+  margin-bottom: 12px;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.digits-error-msg.hidden {
+  display: none !important;
+}
+
+.digits-security-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #059669;
+  margin-top: 14px;
+}
+
+.digits-security-badge i {
+  font-size: 15px;
+}
+
+.digits-resend-container {
+  text-align: center;
+  margin-top: 16px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.digits-resend-btn {
+  background: none;
+  border: none;
+  color: #d97706;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.digits-resend-btn:hover {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.digits-change-number-wrap,
+.digits-back-wrap {
+  text-align: center;
+  margin-top: 12px;
+}
+
+.digits-text-link-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.digits-text-link-btn:hover {
+  color: #d97706;
+  background: #f8fafc;
+}
+
+.digits-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 18px 0 14px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.digits-divider::before,
+.digits-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.digits-divider span {
+  padding: 0 10px;
+}
+
+.digits-alt-options {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.digits-alt-link-btn {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 16px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.digits-alt-link-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.digits-social-icons {
+  display: flex !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  margin-top: 4px !important;
+}
+
+.digits-pwd-extra-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.digits-link-sm {
+  font-size: 12.5px;
+  color: #d97706;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.digits-link-sm:hover {
+  text-decoration: underline;
+}
+
+/* Mobile Responsiveness (< 768px) */
+@media (max-width: 768px) {
+  .container.digits-auth-container {
+    width: 100% !important;
+    max-width: 420px !important;
+    flex-direction: column !important;
+    min-height: unset !important;
+    border-radius: 24px !important;
+  }
+
+  .digits-side-banner {
+    display: none !important;
+  }
+
+  .digits-auth-panel {
+    width: 100% !important;
+    padding: 22px 18px !important;
+  }
+
+  .digits-title {
+    font-size: 20px !important;
+  }
+
+  .digits-otp-grid {
+    gap: 6px !important;
+  }
+
+  .digits-otp-cell {
+    width: 42px !important;
+    height: 48px !important;
+    font-size: 20px !important;
+  }
+}
+
+/* Dark Mode Theme Adjustments */
+body.dark-mode .container.digits-auth-container {
+  background: #1e293b !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7) !important;
+}
+
+body.dark-mode .digits-auth-panel {
+  background: #1e293b !important;
+}
+
+body.dark-mode .digits-title {
+  color: #f8fafc !important;
+}
+
+body.dark-mode .digits-sub {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode .digits-label {
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode .digits-phone-input-wrap {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+}
+
+body.dark-mode .digits-country-badge {
+  background: #1e293b !important;
+  border-right-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+body.dark-mode .digits-dial-code {
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode .digits-phone-input {
+  color: #f8fafc !important;
+}
+
+body.dark-mode .digits-text-input {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+body.dark-mode .digits-otp-cell {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+body.dark-mode .digits-alt-link-btn {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode .digits-alt-link-btn:hover {
+  background: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body.dark-mode .digits-divider {
+  color: #64748b !important;
+}
+
+body.dark-mode .digits-divider::before,
+body.dark-mode .digits-divider::after {
+  border-bottom-color: #334155 !important;
+}
+

@@ -13,15 +13,21 @@
 -- 1. Users / Profiles Table (Store Customer Accounts)
 CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT UNIQUE NOT NULL,
+    phone_normalized TEXT UNIQUE,
+    phone TEXT,
+    email TEXT UNIQUE,
     name TEXT,
     password_hash TEXT,
-    platform TEXT DEFAULT 'Website Account',
-    phone TEXT,
+    platform TEXT DEFAULT 'Mobile OTP Account',
     address TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     last_login TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
+
+-- Migration helpers if columns don't exist in active database:
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone_normalized TEXT UNIQUE;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.users ALTER COLUMN email DROP NOT NULL;
 
 -- Note: The store utilizes a secure, server-side Email OTP verification system.
 -- Drop any legacy auth.users trigger dependency if previously applied:
@@ -83,6 +89,21 @@ CREATE TABLE IF NOT EXISTS public.products (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 7. Persistent OTPs Table (Stateless Multi-Instance / Vercel Serverless Authentication)
+CREATE TABLE IF NOT EXISTS public.otps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    identifier TEXT NOT NULL,       -- Normalized phone (+91...) or email
+    otp_hash TEXT NOT NULL,         -- SHA-256 hash
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    attempts INTEGER DEFAULT 0,
+    purpose TEXT DEFAULT 'login',   -- 'login', 'register', 'reset'
+    verified BOOLEAN DEFAULT false,
+    user_name TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_otps_identifier ON public.otps(identifier);
+CREATE INDEX IF NOT EXISTS idx_otps_expires ON public.otps(expires_at);
+
 -- =======================================================
 -- Enable Row Level Security (RLS) on All Tables
 -- =======================================================
@@ -92,6 +113,16 @@ ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wishlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.otps ENABLE ROW LEVEL SECURITY;
+
+-- OTPs Policy: Strictly service_role access only. Anonymous & regular clients cannot query OTPs.
+DROP POLICY IF EXISTS "Service role manages otps" ON public.otps;
+CREATE POLICY "Service role manages otps"
+    ON public.otps
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
 -- =======================================================
 -- Secure Row Level Security Policies

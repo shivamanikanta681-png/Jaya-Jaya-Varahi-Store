@@ -375,6 +375,26 @@ class ShopApp {
     this.openLoginBtn = document.getElementById('open-login-btn');
     this.closeLoginModal = document.getElementById('close-login-modal');
 
+    // Native Digits-Style Mobile OTP Authentication Elements
+    this.digitsStepPhone = document.getElementById('digits-step-phone');
+    this.digitsStepVerify = document.getElementById('digits-step-verify');
+    this.digitsStepProfile = document.getElementById('digits-step-profile');
+    this.digitsStepPassword = document.getElementById('digits-step-password');
+    this.mobileOtpPhoneInput = document.getElementById('mobile-otp-phone-input');
+    this.btnSendMobileOtp = document.getElementById('btn-send-mobile-otp');
+    this.btnVerifyMobileOtp = document.getElementById('btn-verify-mobile-otp');
+    this.btnResendMobileOtp = document.getElementById('btn-resend-mobile-otp');
+    this.btnChangeMobile = document.getElementById('btn-change-mobile');
+    this.digitsMaskedPhone = document.getElementById('digits-masked-phone');
+    this.digitsResendTimer = document.getElementById('digits-resend-timer');
+    this.digitsCountdownWrap = document.getElementById('digits-countdown-wrap');
+    this.digitsPhoneError = document.getElementById('digits-phone-error');
+    this.digitsVerifyError = document.getElementById('digits-verify-error');
+    this.digitsProfileError = document.getElementById('digits-profile-error');
+    this.digitsPasswordError = document.getElementById('digits-password-error');
+    this.pendingMobileOtp = null;
+    this.pendingRegistration = null;
+
     this.ownerAuthModal = document.getElementById('owner-auth-modal');
     this.openOwnerBtn = document.getElementById('open-owner-btn');
     this.closeOwnerAuthModal = document.getElementById('close-owner-auth-modal');
@@ -732,7 +752,7 @@ class ShopApp {
       });
     }
 
-    // 15. Animated Login / Signup Modal Trigger & Controls
+    // 15. Native Digits-Style Mobile OTP Authentication Controls
     if (this.openLoginBtn) {
       this.openLoginBtn.addEventListener('click', (e) => {
         if (e.target.closest('#header-logout-btn')) return;
@@ -740,6 +760,7 @@ class ShopApp {
         if (this.currentUser && this.currentUser.name) {
           this.openAccountModal();
         } else {
+          this.switchDigitsStep('phone');
           if (this.loginModal) this.loginModal.classList.remove('hidden');
         }
       });
@@ -752,157 +773,7 @@ class ShopApp {
     }
 
     if (this.loginModal) {
-      const container = this.loginModal.querySelector('.container');
-      const registerBtn = this.loginModal.querySelector('.register-btn');
-      const loginBtn = this.loginModal.querySelector('.login-btn');
-      const mobileTabLogin = document.getElementById('mobile-tab-login');
-      const mobileTabRegister = document.getElementById('mobile-tab-register');
-      const mobileSwitchToReg = document.getElementById('mobile-switch-to-register');
-      const mobileSwitchToLogin = document.getElementById('mobile-switch-to-login');
-
-      const setAuthMode = (mode) => {
-        if (!container) return;
-        if (mode === 'register') {
-          container.classList.add('active');
-          if (mobileTabRegister) mobileTabRegister.classList.add('active');
-          if (mobileTabLogin) mobileTabLogin.classList.remove('active');
-        } else {
-          container.classList.remove('active');
-          if (mobileTabLogin) mobileTabLogin.classList.add('active');
-          if (mobileTabRegister) mobileTabRegister.classList.remove('active');
-        }
-      };
-
-      this.setLoginAuthMode = setAuthMode;
-
-      if (registerBtn) registerBtn.addEventListener('click', () => setAuthMode('register'));
-      if (loginBtn) loginBtn.addEventListener('click', () => setAuthMode('login'));
-      if (mobileTabRegister) mobileTabRegister.addEventListener('click', () => setAuthMode('register'));
-      if (mobileTabLogin) mobileTabLogin.addEventListener('click', () => setAuthMode('login'));
-      if (mobileSwitchToReg) mobileSwitchToReg.addEventListener('click', () => setAuthMode('register'));
-      if (mobileSwitchToLogin) mobileSwitchToLogin.addEventListener('click', () => setAuthMode('login'));
-
-      const loginForm = document.getElementById('login-form');
-      if (loginForm) {
-        loginForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const usernameInput = loginForm.querySelector('input[type="text"]');
-          const passwordInput = loginForm.querySelector('input[type="password"]');
-          const username = usernameInput && usernameInput.value.trim() ? usernameInput.value.trim() : 'Customer';
-          const email = username.includes('@') ? username : `${username.toLowerCase().replace(/\s+/g, '')}@gmail.com`;
-          const password = passwordInput ? passwordInput.value : '';
-
-          let authSuccess = false;
-          let authErrorMessage = '';
-
-          // 1. Authenticate with Supabase Auth if client is available
-          if (window.supabaseClient && password && email) {
-            try {
-              const { data, error } = await window.supabaseClient.auth.signInWithPassword({
-                email: email,
-                password: password
-              });
-              if (!error && data?.user) {
-                authSuccess = true;
-                console.log('✅ [Supabase Auth] Authenticated user session established:', data.user.id);
-              } else if (error) {
-                authErrorMessage = error.message;
-              }
-            } catch (authErr) {
-              authErrorMessage = authErr.message || authErrorMessage;
-            }
-          }
-
-          // 2. If not authenticated via Supabase Auth, verify password with backend server
-          if (!authSuccess && password && email) {
-            try {
-              const res = await apiRequest('/api/login/password', {
-                method: 'POST',
-                body: JSON.stringify({ email: email, password: password })
-              });
-              if (res && res.success) {
-                authSuccess = true;
-              } else if (res && res.error) {
-                authErrorMessage = res.error;
-              }
-            } catch (backendErr) {
-              authErrorMessage = backendErr.message || authErrorMessage;
-            }
-          }
-
-          if (!authSuccess) {
-            this.showToast(`⚠️ ${authErrorMessage || 'Invalid login credentials. You can also use "Login via Email OTP" below.'}`, 'error');
-            return;
-          }
-
-          this.currentUser = {
-            name: username,
-            email: email,
-            platform: 'Website Account',
-            avatarChar: username[0].toUpperCase()
-          };
-          try {
-            localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
-          } catch(err) {
-            console.warn('[LocalStorage] Error storing customer user:', err);
-          }
-          this.syncUserWithSupabase(this.currentUser);
-          this.updateUserAuthUI();
-          this.loadWishlistFromSupabase();
-          if (this.loginModal) this.loginModal.classList.add('hidden');
-          this.showToast(`🎉 Welcome back, ${escapeHTML(username)}! Logged in successfully.`, 'success');
-        });
-      }
-
-      const regForm = document.getElementById('register-form');
-      if (regForm) {
-        regForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const usernameInput = regForm.querySelector('input[type="text"]');
-          const emailInput = regForm.querySelector('input[type="email"]');
-          const passwordInput = regForm.querySelector('input[type="password"]');
-          const username = usernameInput && usernameInput.value.trim() ? usernameInput.value.trim() : 'Customer';
-          const email = emailInput && emailInput.value.trim() ? emailInput.value.trim() : `${username.toLowerCase()}@example.com`;
-          const password = passwordInput ? passwordInput.value : '';
-
-          // Register in Supabase Auth if client is available
-          if (window.supabaseClient && password && email) {
-            try {
-              const { data, error } = await window.supabaseClient.auth.signUp({
-                email: email,
-                password: password,
-                options: {
-                  data: { name: username }
-                }
-              });
-              if (!error && data?.user) {
-                console.log('✅ [Supabase Auth] User registered in Supabase Auth:', data.user.id);
-              } else if (error) {
-                console.warn('[Supabase Auth] SignUp note:', error.message);
-              }
-            } catch (authErr) {
-              console.warn('[Supabase Auth] SignUp exception:', authErr.message || authErr);
-            }
-          }
-
-          this.currentUser = {
-            name: username,
-            email: email,
-            platform: 'Registered',
-            avatarChar: username[0].toUpperCase()
-          };
-          try {
-            localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
-          } catch(err) {
-            console.warn('[LocalStorage] Error storing customer user:', err);
-          }
-          this.syncUserWithSupabase(this.currentUser);
-          this.updateUserAuthUI();
-          this.loadWishlistFromSupabase();
-          if (this.loginModal) this.loginModal.classList.add('hidden');
-          this.showToast(`🎉 Welcome, ${escapeHTML(username)}! Account registered successfully.`, 'success');
-        });
-      }
+      this.initDigitsMobileAuth();
 
       this.loginModal.addEventListener('click', (e) => {
         const socialBtn = e.target.closest('.social-login-btn');
@@ -4235,6 +4106,520 @@ class ShopApp {
   }
 
   // ══════════════════════════════════════════════════════════════════════
+  // ── NATIVE DIGITS-STYLE MOBILE SMS OTP AUTHENTICATION ENGINE ─────────
+  // ══════════════════════════════════════════════════════════════════════
+
+  normalizeIndianPhone(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    let digits = raw.replace(/[\s\-().]/g, '');
+    if (digits.startsWith('+91')) {
+      digits = digits.slice(3);
+    } else if (digits.startsWith('91') && digits.length === 12) {
+      digits = digits.slice(2);
+    } else if (digits.startsWith('0') && digits.length === 11) {
+      digits = digits.slice(1);
+    }
+    if (!/^[6-9]\d{9}$/.test(digits)) return null;
+    if (/^(\d)\1{9}$/.test(digits)) return null;
+    return `+91${digits}`;
+  }
+
+  initDigitsMobileAuth() {
+    // 1. Phone input event: filter non-numeric characters and format cleanly
+    if (this.mobileOtpPhoneInput) {
+      this.mobileOtpPhoneInput.addEventListener('input', (e) => {
+        let val = e.target.value;
+        val = val.replace(/[^\d+]/g, '');
+        if (val.startsWith('+91')) {
+          const rest = val.slice(3).replace(/\D/g, '').slice(0, 10);
+          e.target.value = '+91 ' + rest;
+        } else {
+          val = val.replace(/\D/g, '').slice(0, 10);
+          e.target.value = val;
+        }
+        if (this.digitsPhoneError) this.digitsPhoneError.classList.add('hidden');
+      });
+
+      this.mobileOtpPhoneInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.handleSendMobileOtp();
+        }
+      });
+    }
+
+    // 2. 6-Digit OTP inputs auto-advance, backspace navigation, paste handler
+    const otpGrid = document.getElementById('digits-otp-grid');
+    if (otpGrid) {
+      const cells = Array.from(otpGrid.querySelectorAll('.digits-otp-cell'));
+
+      cells.forEach((cell, idx) => {
+        cell.addEventListener('input', (e) => {
+          const val = e.target.value.replace(/\D/g, '');
+          e.target.value = val.slice(-1);
+          if (this.digitsVerifyError) this.digitsVerifyError.classList.add('hidden');
+
+          if (val && idx < cells.length - 1) {
+            cells[idx + 1].focus();
+            cells[idx + 1].select();
+          } else if (val && idx === cells.length - 1) {
+            const allFilled = cells.every(c => c.value.trim().length === 1);
+            if (allFilled) {
+              this.handleVerifyMobileOtp();
+            }
+          }
+        });
+
+        cell.addEventListener('keydown', (e) => {
+          if (e.key === 'Backspace') {
+            if (!cell.value && idx > 0) {
+              cells[idx - 1].focus();
+              cells[idx - 1].value = '';
+              e.preventDefault();
+            }
+          } else if (e.key === 'ArrowLeft' && idx > 0) {
+            cells[idx - 1].focus();
+            e.preventDefault();
+          } else if (e.key === 'ArrowRight' && idx < cells.length - 1) {
+            cells[idx + 1].focus();
+            e.preventDefault();
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            this.handleVerifyMobileOtp();
+          }
+        });
+
+        cell.addEventListener('paste', (e) => {
+          e.preventDefault();
+          const pastedData = (e.clipboardData || window.clipboardData).getData('text');
+          const digits = pastedData.replace(/\D/g, '').slice(0, 6);
+          if (!digits) return;
+
+          digits.split('').forEach((d, i) => {
+            if (cells[i]) cells[i].value = d;
+          });
+
+          const nextIndex = Math.min(digits.length, cells.length - 1);
+          cells[nextIndex].focus();
+          if (digits.length === 6) {
+            this.handleVerifyMobileOtp();
+          }
+        });
+      });
+    }
+  }
+
+  switchDigitsStep(step) {
+    const steps = {
+      phone: this.digitsStepPhone,
+      verify: this.digitsStepVerify,
+      profile: this.digitsStepProfile,
+      password: this.digitsStepPassword
+    };
+
+    Object.entries(steps).forEach(([k, el]) => {
+      if (!el) return;
+      if (k === step) {
+        el.classList.remove('hidden');
+        el.classList.add('active');
+      } else {
+        el.classList.add('hidden');
+        el.classList.remove('active');
+      }
+    });
+
+    [this.digitsPhoneError, this.digitsVerifyError, this.digitsProfileError, this.digitsPasswordError].forEach(errEl => {
+      if (errEl) {
+        errEl.textContent = '';
+        errEl.classList.add('hidden');
+      }
+    });
+
+    if (step === 'phone') {
+      setTimeout(() => this.mobileOtpPhoneInput?.focus(), 150);
+    } else if (step === 'verify') {
+      const firstCell = document.querySelector('#digits-otp-grid .digits-otp-cell[data-idx="0"]');
+      setTimeout(() => firstCell?.focus(), 150);
+    } else if (step === 'profile') {
+      setTimeout(() => document.getElementById('digits-new-name')?.focus(), 150);
+    } else if (step === 'password') {
+      setTimeout(() => document.getElementById('pwd-login-identifier')?.focus(), 150);
+    }
+  }
+
+  async handleSendMobileOtp() {
+    const raw = this.mobileOtpPhoneInput?.value || '';
+    const phone = this.normalizeIndianPhone(raw);
+
+    if (!phone) {
+      if (this.digitsPhoneError) {
+        this.digitsPhoneError.textContent = '⚠️ Please enter a valid 10-digit Indian mobile number (e.g. 9876543210).';
+        this.digitsPhoneError.classList.remove('hidden');
+      }
+      this.mobileOtpPhoneInput?.focus();
+      return;
+    }
+
+    if (this.digitsPhoneError) this.digitsPhoneError.classList.add('hidden');
+    if (this.btnSendMobileOtp) {
+      this.btnSendMobileOtp.disabled = true;
+      this.btnSendMobileOtp.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Sending SMS OTP...`;
+    }
+
+    try {
+      const res = await apiRequest('/api/send-otp', {
+        method: 'POST',
+        body: JSON.stringify({ phone: phone, purpose: 'login' })
+      });
+
+      if (res && res.success) {
+        if (this.pendingMobileOtp && this.pendingMobileOtp.timerId) {
+          clearInterval(this.pendingMobileOtp.timerId);
+        }
+
+        const masked = res.masked || phone.slice(0, 3) + ' ' + phone.slice(3, 8) + ' ' + phone.slice(8).replace(/\d/g, '•');
+        const cooldown = res.resendCooldown || 30;
+
+        this.pendingMobileOtp = {
+          phone: phone,
+          masked: masked,
+          purpose: 'login',
+          resendCooldown: cooldown,
+          timerId: null
+        };
+
+        if (this.digitsMaskedPhone) {
+          this.digitsMaskedPhone.textContent = masked;
+        }
+
+        const cells = document.querySelectorAll('#digits-otp-grid .digits-otp-cell');
+        cells.forEach(c => c.value = '');
+
+        this.startDigitsResendTimer(cooldown);
+        this.switchDigitsStep('verify');
+        this.showToast(`📩 OTP sent via SMS to ${masked}! Please enter the 6-digit code.`, 'success');
+      } else {
+        const errorMsg = res?.error || 'Unable to send SMS OTP. Please try again.';
+        if (this.digitsPhoneError) {
+          this.digitsPhoneError.textContent = `⚠️ ${errorMsg}`;
+          this.digitsPhoneError.classList.remove('hidden');
+        }
+        this.showToast(errorMsg, 'error');
+      }
+    } catch (err) {
+      const msg = err.message || 'Network error while requesting SMS OTP.';
+      if (this.digitsPhoneError) {
+        this.digitsPhoneError.textContent = `⚠️ ${msg}`;
+        this.digitsPhoneError.classList.remove('hidden');
+      }
+      this.showToast(msg, 'error');
+    } finally {
+      if (this.btnSendMobileOtp) {
+        this.btnSendMobileOtp.disabled = false;
+        this.btnSendMobileOtp.innerHTML = `<span>Send OTP</span> <i class='bx bx-send'></i>`;
+      }
+    }
+  }
+
+  startDigitsResendTimer(seconds = 30) {
+    if (!this.pendingMobileOtp) return;
+    if (this.pendingMobileOtp.timerId) clearInterval(this.pendingMobileOtp.timerId);
+
+    let remaining = seconds;
+    if (this.digitsResendTimer) this.digitsResendTimer.textContent = remaining;
+    if (this.digitsCountdownWrap) this.digitsCountdownWrap.classList.remove('hidden');
+    if (this.btnResendMobileOtp) this.btnResendMobileOtp.classList.add('hidden');
+
+    this.pendingMobileOtp.timerId = setInterval(() => {
+      remaining--;
+      if (this.digitsResendTimer) this.digitsResendTimer.textContent = remaining;
+      if (remaining <= 0) {
+        clearInterval(this.pendingMobileOtp.timerId);
+        if (this.digitsCountdownWrap) this.digitsCountdownWrap.classList.add('hidden');
+        if (this.btnResendMobileOtp) this.btnResendMobileOtp.classList.remove('hidden');
+      }
+    }, 1000);
+  }
+
+  async handleResendMobileOtp() {
+    if (!this.pendingMobileOtp || !this.pendingMobileOtp.phone) {
+      this.switchDigitsStep('phone');
+      return;
+    }
+
+    if (this.btnResendMobileOtp) {
+      this.btnResendMobileOtp.disabled = true;
+      this.btnResendMobileOtp.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Resending...`;
+    }
+
+    try {
+      const res = await apiRequest('/api/send-otp', {
+        method: 'POST',
+        body: JSON.stringify({ phone: this.pendingMobileOtp.phone, purpose: this.pendingMobileOtp.purpose || 'login' })
+      });
+
+      if (res && res.success) {
+        const cooldown = res.resendCooldown || 30;
+        this.startDigitsResendTimer(cooldown);
+        this.showToast(`📩 New SMS OTP dispatched to ${this.pendingMobileOtp.masked}!`, 'success');
+        const cells = document.querySelectorAll('#digits-otp-grid .digits-otp-cell');
+        cells.forEach(c => c.value = '');
+        cells[0]?.focus();
+      } else {
+        const errorMsg = res?.error || 'Unable to resend OTP at this time.';
+        this.showToast(errorMsg, 'error');
+      }
+    } catch (err) {
+      this.showToast(err.message || 'Failed to resend SMS OTP.', 'error');
+    } finally {
+      if (this.btnResendMobileOtp) {
+        this.btnResendMobileOtp.disabled = false;
+        this.btnResendMobileOtp.innerHTML = `<i class='bx bx-refresh'></i> Resend OTP`;
+      }
+    }
+  }
+
+  async handleVerifyMobileOtp() {
+    if (!this.pendingMobileOtp || !this.pendingMobileOtp.phone) {
+      this.switchDigitsStep('phone');
+      return;
+    }
+
+    const cells = Array.from(document.querySelectorAll('#digits-otp-grid .digits-otp-cell'));
+    const otpCode = cells.map(c => c.value.trim()).join('');
+
+    if (otpCode.length !== 6 || !/^\d{6}$/.test(otpCode)) {
+      if (this.digitsVerifyError) {
+        this.digitsVerifyError.textContent = '⚠️ Please enter all 6 digits of the SMS verification code.';
+        this.digitsVerifyError.classList.remove('hidden');
+      }
+      cells.find(c => !c.value.trim())?.focus();
+      return;
+    }
+
+    if (this.digitsVerifyError) this.digitsVerifyError.classList.add('hidden');
+    if (this.btnVerifyMobileOtp) {
+      this.btnVerifyMobileOtp.disabled = true;
+      this.btnVerifyMobileOtp.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Verifying OTP...`;
+    }
+
+    try {
+      const res = await apiRequest('/api/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({
+          phone: this.pendingMobileOtp.phone,
+          otp: otpCode,
+          purpose: this.pendingMobileOtp.purpose || 'login'
+        })
+      });
+
+      if (res && res.success) {
+        if (this.pendingMobileOtp.timerId) {
+          clearInterval(this.pendingMobileOtp.timerId);
+        }
+
+        if (res.isNewUser) {
+          this.pendingRegistration = {
+            verifiedToken: res.verifiedToken,
+            phone: this.pendingMobileOtp.phone
+          };
+          this.switchDigitsStep('profile');
+          this.showToast('✅ Mobile verified! Please enter your name to complete registration.', 'info');
+        } else {
+          this.currentUser = res.user;
+          try {
+            localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
+            if (res.sessionToken) sessionStorage.setItem('jjv_session_token', res.sessionToken);
+          } catch(err) {
+            console.warn('[LocalStorage] Error storing customer user:', err);
+          }
+
+          this.syncUserWithSupabase(this.currentUser);
+          this.updateUserAuthUI();
+          this.loadWishlistFromSupabase();
+          if (this.loginModal) this.loginModal.classList.add('hidden');
+          this.showToast(`🎉 Welcome back, ${escapeHTML(this.currentUser.name)}! Logged in successfully.`, 'success');
+        }
+      } else {
+        const errorMsg = res?.error || 'Invalid OTP. Please try again.';
+        if (this.digitsVerifyError) {
+          this.digitsVerifyError.textContent = `⚠️ ${errorMsg}`;
+          this.digitsVerifyError.classList.remove('hidden');
+        }
+        cells.forEach(c => c.value = '');
+        cells[0]?.focus();
+        this.showToast(errorMsg, 'error');
+      }
+    } catch (err) {
+      const msg = err.message || 'Verification failed. Please try again.';
+      if (this.digitsVerifyError) {
+        this.digitsVerifyError.textContent = `⚠️ ${msg}`;
+        this.digitsVerifyError.classList.remove('hidden');
+      }
+      this.showToast(msg, 'error');
+    } finally {
+      if (this.btnVerifyMobileOtp) {
+        this.btnVerifyMobileOtp.disabled = false;
+        this.btnVerifyMobileOtp.innerHTML = `<span>Verify OTP</span> <i class='bx bx-check-shield'></i>`;
+      }
+    }
+  }
+
+  async handleCompleteProfile() {
+    if (!this.pendingRegistration || !this.pendingRegistration.verifiedToken) {
+      this.switchDigitsStep('phone');
+      return;
+    }
+
+    const nameInput = document.getElementById('digits-new-name');
+    const emailInput = document.getElementById('digits-new-email');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const email = emailInput ? emailInput.value.trim().toLowerCase() : '';
+
+    if (!name) {
+      if (this.digitsProfileError) {
+        this.digitsProfileError.textContent = '⚠️ Please enter your full name.';
+        this.digitsProfileError.classList.remove('hidden');
+      }
+      nameInput?.focus();
+      return;
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (this.digitsProfileError) {
+        this.digitsProfileError.textContent = '⚠️ Please enter a valid email address.';
+        this.digitsProfileError.classList.remove('hidden');
+      }
+      emailInput?.focus();
+      return;
+    }
+
+    const btn = document.getElementById('btn-complete-profile');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Completing Account...`;
+    }
+
+    try {
+      const res = await apiRequest('/api/register/complete', {
+        method: 'POST',
+        body: JSON.stringify({
+          verifiedToken: this.pendingRegistration.verifiedToken,
+          phone: this.pendingRegistration.phone,
+          name: name,
+          email: email
+        })
+      });
+
+      if (res && res.success) {
+        this.currentUser = res.user;
+        try {
+          localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
+          if (res.sessionToken) sessionStorage.setItem('jjv_session_token', res.sessionToken);
+        } catch(err) {
+          console.warn('[LocalStorage] Error storing customer user:', err);
+        }
+
+        this.syncUserWithSupabase(this.currentUser);
+        this.updateUserAuthUI();
+        this.loadWishlistFromSupabase();
+        if (this.loginModal) this.loginModal.classList.add('hidden');
+        this.showToast(`🎉 Welcome to Jaya Jaya Varahi Shop, ${escapeHTML(name)}! Account created.`, 'success');
+      } else {
+        const errorMsg = res?.error || 'Registration completion failed. Please try again.';
+        if (this.digitsProfileError) {
+          this.digitsProfileError.textContent = `⚠️ ${errorMsg}`;
+          this.digitsProfileError.classList.remove('hidden');
+        }
+        this.showToast(errorMsg, 'error');
+      }
+    } catch (err) {
+      const msg = err.message || 'Error completing registration.';
+      if (this.digitsProfileError) {
+        this.digitsProfileError.textContent = `⚠️ ${msg}`;
+        this.digitsProfileError.classList.remove('hidden');
+      }
+      this.showToast(msg, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Complete Registration & Sign In</span> <i class='bx bx-check-circle'></i>`;
+      }
+    }
+  }
+
+  async handlePasswordLoginSubmit() {
+    const idInput = document.getElementById('pwd-login-identifier');
+    const pwdInput = document.getElementById('pwd-login-password');
+    const identifier = idInput ? idInput.value.trim() : '';
+    const password = pwdInput ? pwdInput.value : '';
+
+    if (!identifier || !password) {
+      if (this.digitsPasswordError) {
+        this.digitsPasswordError.textContent = '⚠️ Please enter your phone/email and password.';
+        this.digitsPasswordError.classList.remove('hidden');
+      }
+      return;
+    }
+
+    const btn = document.getElementById('btn-submit-password-login');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Verifying Credentials...`;
+    }
+
+    try {
+      const res = await apiRequest('/api/login/password', {
+        method: 'POST',
+        body: JSON.stringify({ identifier: identifier, password: password })
+      });
+
+      if (res && res.success && res.requiresOtp) {
+        const masked = res.masked || identifier;
+        const cooldown = res.resendCooldown || 30;
+
+        this.pendingMobileOtp = {
+          phone: res.identifier,
+          masked: masked,
+          purpose: 'password_login',
+          resendCooldown: cooldown,
+          timerId: null
+        };
+
+        if (this.digitsMaskedPhone) {
+          this.digitsMaskedPhone.textContent = masked;
+        }
+
+        const cells = document.querySelectorAll('#digits-otp-grid .digits-otp-cell');
+        cells.forEach(c => c.value = '');
+
+        this.startDigitsResendTimer(cooldown);
+        this.switchDigitsStep('verify');
+        this.showToast(`🔒 Password verified! Security OTP dispatched to ${masked}.`, 'info');
+      } else {
+        const errorMsg = res?.error || 'Invalid credentials. Please check your phone/email or password.';
+        if (this.digitsPasswordError) {
+          this.digitsPasswordError.textContent = `⚠️ ${errorMsg}`;
+          this.digitsPasswordError.classList.remove('hidden');
+        }
+        this.showToast(errorMsg, 'error');
+      }
+    } catch (err) {
+      const msg = err.message || 'Password login verification failed.';
+      if (this.digitsPasswordError) {
+        this.digitsPasswordError.textContent = `⚠️ ${msg}`;
+        this.digitsPasswordError.classList.remove('hidden');
+      }
+      this.showToast(msg, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Verify & Send OTP</span> <i class='bx bx-arrow-to-right'></i>`;
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
   // ── 100% FREE EMAIL OTP ENGINE (Forgot Password & Passwordless Login) ──
   // ══════════════════════════════════════════════════════════════════════
 
@@ -4249,7 +4634,7 @@ class ShopApp {
     this.pendingEmailOtp = {
       mode: mode,
       email: '',
-      otpCode: '',
+      verifiedOtp: '',
       verified: false,
       resendCountdown: 60,
       timerId: null
@@ -4350,7 +4735,6 @@ class ShopApp {
 
   async requestEmailOTP(email, mode = 'reset') {
     let hasSmtp;
-    let devOtp;
 
     try {
       const resp = await fetch('/api/send-otp', {
@@ -4363,7 +4747,6 @@ class ShopApp {
 
       if (resp.ok && data.success) {
         hasSmtp = Boolean(data.hasSmtpConfigured);
-        devOtp = data.devOtp || null;
       } else {
         const errorMsg = data.error || `HTTP ${resp.status}: Unable to send verification code.`;
         this.showToast(errorMsg, 'error');
@@ -4395,8 +4778,6 @@ class ShopApp {
 
     if (hasSmtp) {
       this.showToast(`📩 Verification code dispatched to ${email}! Please check your inbox.`, 'success');
-    } else if (devOtp) {
-      this.showToast(`📩 Verification code for ${escapeHTML(email)}: ${devOtp}`, 'info', 10000);
     } else {
       this.showToast(`📩 Verification code sent to ${escapeHTML(email)}!`, 'info');
     }
@@ -4406,7 +4787,7 @@ class ShopApp {
 
   renderEmailOTPStep2() {
     if (!this.emailOtpContent || !this.pendingEmailOtp) return;
-    const { email, mode, otpCode, resendCountdown, hasSmtp } = this.pendingEmailOtp;
+    const { email, mode, resendCountdown, hasSmtp } = this.pendingEmailOtp;
     const isReset = mode === 'reset';
 
     this.emailOtpContent.innerHTML = `
@@ -4437,19 +4818,13 @@ class ShopApp {
           </a>
         </div>
 
-        ${!hasSmtp ? `
-        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 14px; margin: 8px 0 14px; text-align:center;">
-          <div style="font-size:12px; color:#1e40af; font-weight:600;">🔑 Verification Code for Testing:</div>
-          <div style="font-size:22px; font-weight:800; letter-spacing:4px; color:#1d4ed8; margin:4px 0;">${escapeHTML(otpCode)}</div>
-          <div style="font-size:11px; color:#64748b;">(To deliver directly into your Gmail inbox, add your Gmail App Password to <code>.env</code>)</div>
-        </div>
-        ` : `
+        ${hasSmtp ? `
         <div style="margin: 8px 0 14px; text-align: center;">
           <a href="https://mail.google.com/" target="_blank" style="display:inline-flex; align-items:center; gap:6px; color:#b45309; font-size:12.5px; font-weight:600; text-decoration:none; padding:7px 16px; border-radius:20px; background:#fef3c7; border:1px solid #fde68a;">
             <i class='bx bx-envelope'></i> Open Webmail Inbox
           </a>
         </div>
-        `}
+        ` : ''}
 
         <form id="email-otp-verify-form" onsubmit="window.shopApp.handleEmailOTPSubmit(event)" style="width:100%; margin-top:10px;">
           <div class="otp-inputs-grid" id="email-otp-inputs-wrapper">
@@ -4622,15 +4997,11 @@ class ShopApp {
         if (data.verified) isVerified = true;
       }
     } catch (err) {
-      console.info('[JJV OTP Engine] Client verification fallback active');
-    }
-
-    // Fallback to local dev OTP only if dev mode
-    if (!isVerified && this.pendingEmailOtp.otpCode && enteredCode === this.pendingEmailOtp.otpCode) {
-      isVerified = true;
+      console.warn('[JJV OTP Engine] Server verification request error:', err.message);
     }
 
     if (isVerified) {
+      this.pendingEmailOtp.verifiedOtp = enteredCode;
       if (this.pendingEmailOtp.timerId) {
         clearInterval(this.pendingEmailOtp.timerId);
       }
@@ -4777,7 +5148,7 @@ class ShopApp {
         method: 'POST',
         body: JSON.stringify({
           email: this.pendingEmailOtp.email,
-          otp: this.pendingEmailOtp.otpCode,
+          otp: this.pendingEmailOtp.verifiedOtp,
           newPassword: newPass
         })
       });

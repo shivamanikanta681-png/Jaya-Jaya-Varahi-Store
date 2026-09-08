@@ -24,3 +24,6 @@ npm-debug.log*
 
 # Firebase CLI cache
 .firebase/
+
+# Local data & test storage
+data/
