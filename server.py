@@ -24,6 +24,7 @@ import secrets
 import time
 import smtplib
 import ssl
+import urllib.parse
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
@@ -54,6 +55,8 @@ ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", ENV.get("ALLOWED_ORIGIN", "*")
 
 # Admin credentials
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ENV.get("ADMIN_PASSWORD", "varahi123")).strip()
+if APP_ENV == "production" and (not ADMIN_PASSWORD or ADMIN_PASSWORD == "varahi123"):
+    raise RuntimeError("FATAL: In production mode, you must set a secure, non-default ADMIN_PASSWORD in your environment or .env file.")
 
 # SMTP credentials
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL", ENV.get("SMTP_EMAIL", "")).strip()
@@ -62,7 +65,7 @@ SMTP_SENDER_NAME = os.environ.get("SMTP_SENDER_NAME", ENV.get("SMTP_SENDER_NAME"
 
 # Gemini AI settings
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", ENV.get("GEMINI_API_KEY", "")).strip()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", ENV.get("GEMINI_MODEL", "gemini-1.5-flash")).strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", ENV.get("GEMINI_MODEL", "gemini-2.5-flash")).strip()
 
 STORE_CONTEXT = """
 You are 'Varahi AI', the official AI customer support assistant for 'Jaya Jaya Varahi Shop & Gifts' located in Boduppal / Peerzadiguda, Hyderabad.
@@ -238,8 +241,12 @@ def calculate_authoritative_order(order_payload: Dict[str, Any]) -> Tuple[bool, 
         return False, {}, "Order must include at least one item"
 
     # Fetch catalog from Supabase or fallback to get authoritative prices
-    rag = get_rag_pipeline()
-    catalog = rag.products_retriever.fetch_products()
+    try:
+        rag = get_rag_pipeline()
+        catalog = rag.product_retriever.fetch_products()
+    except Exception as e:
+        print(f"[Order Calc Note] Catalog fetch fallback: {e}")
+        catalog = []
     catalog_map = {str(p["id"]): p for p in catalog}
 
     # Fetch current day discount from store settings
@@ -336,13 +343,45 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(status)
         origin = ALLOWED_ORIGIN if ALLOWED_ORIGIN != "*" else "*"
         self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-token")
         self.send_header("Content-Type", content_type)
         self.end_headers()
 
     def do_OPTIONS(self):
         self._set_cors_headers(200)
+
+    def do_DELETE(self):
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+
+        # ── ROUTE: ADMIN PRODUCT DELETE ──
+        if path == "/api/admin/products":
+            if not is_authenticated_admin(self.headers):
+                self._set_cors_headers(403)
+                self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
+                return
+
+            prod_id = query_params.get("id", [None])[0]
+            if not prod_id:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": "Product ID is required"}).encode("utf-8"))
+                return
+
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                client.table("products").delete().eq("id", prod_id).execute()
+                self._set_cors_headers(200)
+                self.wfile.write(json.dumps({"success": True, "message": f"Product {prod_id} deleted successfully"}).encode("utf-8"))
+            except Exception as e:
+                self._set_cors_headers(500)
+                self.wfile.write(json.dumps({"success": False, "error": f"Product delete error: {str(e)}"}).encode("utf-8"))
+            return
+
+        self._set_cors_headers(404)
+        self.wfile.write(json.dumps({"success": False, "error": "Endpoint not found"}).encode("utf-8"))
 
     def do_GET(self):
         # ── HEALTH CHECK ENDPOINT ──
@@ -384,8 +423,10 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"success": False, "error": "Invalid JSON format"}).encode("utf-8"))
             return
 
+        req_path = self.path.split("?")[0]
+
         # ── ROUTE 1: ADMIN LOGIN ──
-        if self.path == "/api/admin/login":
+        if req_path == "/api/admin/login":
             entered_password = str(payload.get("password", "")).strip()
             if not entered_password or entered_password != ADMIN_PASSWORD:
                 self._set_cors_headers(401)
@@ -404,7 +445,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # ── ROUTE 2: ADMIN SAVE STORE SETTINGS ──
-        elif self.path == "/api/admin/settings":
+        elif req_path == "/api/admin/settings":
             if not is_authenticated_admin(self.headers):
                 self._set_cors_headers(403)
                 self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
@@ -427,7 +468,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # ── ROUTE 3: ADMIN SAVE CATEGORIES ──
-        elif self.path == "/api/admin/categories":
+        elif req_path == "/api/admin/categories":
             if not is_authenticated_admin(self.headers):
                 self._set_cors_headers(403)
                 self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
@@ -453,7 +494,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # ── ROUTE 4: ADMIN PRODUCTS CRUD ──
-        elif self.path == "/api/admin/products":
+        elif req_path == "/api/admin/products":
             if not is_authenticated_admin(self.headers):
                 self._set_cors_headers(403)
                 self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
@@ -481,7 +522,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # ── ROUTE 5: SEND OTP (Cryptographic & Rate Limited) ──
-        elif self.path == "/api/send-otp":
+        elif req_path == "/api/send-otp":
             email = payload.get("email", "").strip().lower()
             mode = payload.get("mode", "reset")
             client_ip = self.client_address[0] if self.client_address else "unknown"
@@ -546,7 +587,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # ── ROUTE 6: VERIFY OTP ──
-        elif self.path == "/api/verify-otp":
+        elif req_path == "/api/verify-otp":
             email = payload.get("email", "").strip().lower()
             entered_otp = str(payload.get("otp", "")).strip()
 
@@ -590,7 +631,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
         # ── ROUTE 7: RESET PASSWORD ──
-        elif self.path == "/api/reset-password":
+        elif req_path == "/api/reset-password":
             email = payload.get("email", "").strip().lower()
             entered_otp = str(payload.get("otp", "")).strip()
             new_password = payload.get("newPassword", "").strip()
@@ -618,7 +659,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # ── ROUTE 8: USER SYNC / LOGIN ──
-        elif self.path == "/api/login":
+        elif req_path == "/api/login":
             email = payload.get("email", "").strip().lower()
             name = payload.get("name", "").strip()
             platform = payload.get("platform", "Website Account")
@@ -640,35 +681,39 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # ── ROUTE 9: AUTHORITATIVE ORDER PERSISTENCE ──
-        elif self.path == "/api/orders":
-            order_data = payload.get("order", payload)
-            valid, sanitized_order, err_msg = calculate_authoritative_order(order_data)
-            if not valid:
-                self._set_cors_headers(400)
-                self.wfile.write(json.dumps({"success": False, "error": err_msg}).encode("utf-8"))
-                return
+        elif req_path == "/api/orders":
+            try:
+                order_data = payload.get("order", payload)
+                valid, sanitized_order, err_msg = calculate_authoritative_order(order_data)
+                if not valid:
+                    self._set_cors_headers(400)
+                    self.wfile.write(json.dumps({"success": False, "error": err_msg}).encode("utf-8"))
+                    return
 
-            synced, result, note = sync_order_to_supabase(sanitized_order)
-            if not synced:
-                self._set_cors_headers(500)
+                synced, result, note = sync_order_to_supabase(sanitized_order)
+                if not synced:
+                    self._set_cors_headers(500)
+                    self.wfile.write(json.dumps({
+                        "success": False,
+                        "error": "Failed to persist order to database",
+                        "detail": note
+                    }).encode("utf-8"))
+                    return
+
+                self._set_cors_headers(201)
                 self.wfile.write(json.dumps({
-                    "success": False,
-                    "error": "Failed to persist order to database",
-                    "detail": note
+                    "success": True,
+                    "message": "Order validated and stored successfully",
+                    "order": sanitized_order,
+                    "result": result
                 }).encode("utf-8"))
-                return
-
-            self._set_cors_headers(201)
-            self.wfile.write(json.dumps({
-                "success": True,
-                "message": "Order validated and stored successfully",
-                "order": sanitized_order,
-                "result": result
-            }).encode("utf-8"))
+            except Exception as e:
+                self._set_cors_headers(500)
+                self.wfile.write(json.dumps({"success": False, "error": f"Order processing error: {str(e)}"}).encode("utf-8"))
             return
 
         # ── ROUTE 10: RAG CUSTOMER SUPPORT CHATBOT ──
-        elif self.path == "/api/chat/rag":
+        elif req_path == "/api/chat/rag":
             message = payload.get("message", "").strip()
             language = payload.get("language", "en")
             phone = payload.get("customerPhone")

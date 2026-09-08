@@ -34,7 +34,7 @@ def load_env() -> Dict[str, str]:
 
 ENV = load_env()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", ENV.get("GEMINI_API_KEY", "")).strip()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", ENV.get("GEMINI_MODEL", "gemini-1.5-flash")).strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", ENV.get("GEMINI_MODEL", "gemini-2.5-flash")).strip()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", ENV.get("OPENAI_API_KEY", "")).strip()
 
 
@@ -429,6 +429,11 @@ class RAGPipeline:
         self.product_retriever = ProductRetriever()
         self.order_retriever = OrderRetriever()
 
+    @property
+    def products_retriever(self) -> ProductRetriever:
+        """Compatibility alias for product_retriever."""
+        return self.product_retriever
+
     def generate_with_gemini(self, prompt: str, context_text: str, language: str) -> Optional[str]:
         """Calls Google Gemini REST API with grounded RAG context."""
         if not GEMINI_API_KEY:
@@ -464,7 +469,7 @@ class RAGPipeline:
         }
 
         # Candidate models list in priority order
-        candidate_models = [GEMINI_MODEL, "gemini-1.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+        candidate_models = [GEMINI_MODEL, "gemini-2.5-flash", "gemini-flash-latest"]
         candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
 
         for model in candidate_models:

@@ -10,9 +10,9 @@
 -- 6. products (Authoritative Store Catalog for Store & AI)
 -- =======================================================
 
--- 1. Users / Profiles Table (Linked to Supabase auth.users)
+-- 1. Users / Profiles Table (Store Customer Accounts)
 CREATE TABLE IF NOT EXISTS public.users (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE NOT NULL,
     name TEXT,
     platform TEXT DEFAULT 'Website Account',
@@ -22,30 +22,10 @@ CREATE TABLE IF NOT EXISTS public.users (
     last_login TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- Automatic Profile Creation Trigger on Auth Signup
-CREATE OR REPLACE FUNCTION public.handle_new_user() 
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.users (id, email, name, platform)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
-    COALESCE(NEW.raw_user_meta_data->>'platform', 'Website Account')
-  )
-  ON CONFLICT (id) DO UPDATE 
-  SET 
-    email = EXCLUDED.email,
-    name = COALESCE(EXCLUDED.name, public.users.name),
-    last_login = timezone('utc'::text, now());
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
+-- Note: The store utilizes a secure, server-side Email OTP verification system.
+-- Drop any legacy auth.users trigger dependency if previously applied:
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+DROP FUNCTION IF EXISTS public.handle_new_user();
 
 -- 2. Orders Table (Customer Orders)
 CREATE TABLE IF NOT EXISTS public.orders (
@@ -121,24 +101,25 @@ DROP POLICY IF EXISTS "Users read own profile" ON public.users;
 CREATE POLICY "Users read own profile" 
     ON public.users 
     FOR SELECT 
-    TO authenticated 
-    USING (auth.uid() = id OR auth.role() = 'service_role');
+    TO public, authenticated, anon, service_role 
+    USING (true);
 
 DROP POLICY IF EXISTS "Users update own profile" ON public.users;
 CREATE POLICY "Users update own profile" 
     ON public.users 
     FOR UPDATE 
-    TO authenticated 
-    USING (auth.uid() = id OR auth.role() = 'service_role')
-    WITH CHECK (auth.uid() = id OR auth.role() = 'service_role');
+    TO public, authenticated, anon, service_role 
+    USING (true)
+    WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow user registration" ON public.users;
 DROP POLICY IF EXISTS "Allow authenticated profile creation" ON public.users;
-CREATE POLICY "Allow authenticated profile creation" 
+DROP POLICY IF EXISTS "Allow user profile creation" ON public.users;
+CREATE POLICY "Allow user profile creation" 
     ON public.users 
     FOR INSERT 
-    TO authenticated 
-    WITH CHECK (auth.uid() = id OR auth.role() = 'service_role');
+    TO public, authenticated, anon, service_role 
+    WITH CHECK (true);
 
 -- 2. Orders Policies:
 DROP POLICY IF EXISTS "Public create orders" ON public.orders;

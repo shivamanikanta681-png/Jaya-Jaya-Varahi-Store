@@ -1004,32 +1004,6 @@ class ShopApp {
       });
     }
 
-    // Firebase Sync Catalog to Cloud Firestore Button
-    const syncFirebaseBtn = document.getElementById('firebase-sync-catalog-btn');
-    if (syncFirebaseBtn) {
-      syncFirebaseBtn.addEventListener('click', async () => {
-        if (!window.firebaseProductService) {
-          this.showToast('Firebase SDK is not loaded yet.', 'error');
-          return;
-        }
-        if (!window.firebaseProductService.isConfigured()) {
-          this.showToast('⚠️ Please add your Firebase project config in firebaseClient.js first!', 'warning');
-          return;
-        }
-        syncFirebaseBtn.disabled = true;
-        syncFirebaseBtn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Syncing...`;
-        try {
-          const res = await window.firebaseProductService.seedCatalog(this.products);
-          this.showToast(`🔥 Successfully synced ${res.count} products to Cloud Firestore!`, 'success');
-        } catch (err) {
-          this.showToast(`Firebase Sync failed: ${err.message}`, 'error');
-        } finally {
-          syncFirebaseBtn.disabled = false;
-          syncFirebaseBtn.innerHTML = `<i class='bx bxl-firebase'></i> Sync Catalog to Firebase`;
-        }
-      });
-    }
-
     // Toggle Image URL vs Upload File
     if (this.imgSourceRadios) {
       this.imgSourceRadios.forEach(radio => {
@@ -2548,8 +2522,9 @@ class ShopApp {
 
       // 1. Delete via backend admin endpoint if token available
       if (this.adminToken) {
-        apiRequest(`/api/admin/products?id=${encodeURIComponent(productId)}`, {
-          method: 'DELETE'
+        apiRequest('/api/admin/products', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'delete', id: productId })
         }).then(() => {
           console.log(`✅ [Admin] Deleted product ${productId} via server backend`);
         }).catch(err => {
@@ -2557,11 +2532,6 @@ class ShopApp {
         });
       } else if (window.supabaseDataService) {
         window.supabaseDataService.deleteProduct(productId).catch(() => {});
-      }
-
-      // 2. Delete from Firebase Cloud Firestore if configured
-      if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
-        window.firebaseProductService.deleteProduct(productId).catch(() => {});
       }
 
       this.saveProducts();
@@ -2623,15 +2593,6 @@ class ShopApp {
           await window.supabaseDataService.saveProduct(productRecord);
         } catch (sbErr) {
           console.warn('[Supabase] Note saving product:', sbErr.message || sbErr);
-        }
-      }
-
-      // Sync to Firebase Cloud Firestore if configured
-      if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
-        try {
-          await window.firebaseProductService.saveProduct(productRecord);
-        } catch (fbErr) {
-          console.warn('Firebase Firestore product note:', fbErr.message || fbErr);
         }
       }
 
