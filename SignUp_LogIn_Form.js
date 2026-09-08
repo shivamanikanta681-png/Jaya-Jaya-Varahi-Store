@@ -4369,6 +4369,8 @@ class ShopApp {
         msg = '⚠️ Too many attempts. Please wait a few minutes before trying again.';
       } else if (err.code === 'auth/quota-exceeded') {
         msg = '⚠️ SMS quota exceeded. Use pre-configured Firebase test phone numbers.';
+      } else if (err.code === 'auth/operation-not-allowed' || (err.message && err.message.includes('region enabled'))) {
+        msg = '⚠️ SMS region policy blocked. In Firebase Console > Authentication > Settings > SMS Regions Policy, enable India (+91), or test with a registered Firebase test phone number.';
       }
       if (this.digitsPhoneError) {
         this.digitsPhoneError.textContent = msg;
@@ -4438,6 +4440,8 @@ class ShopApp {
       let msg = err.message || 'Failed to resend OTP via Firebase.';
       if (err.code === 'auth/too-many-requests') {
         msg = '⚠️ Too many attempts. Please try again later.';
+      } else if (err.code === 'auth/operation-not-allowed' || (err.message && err.message.includes('region enabled'))) {
+        msg = '⚠️ SMS region policy blocked. In Firebase Console > Authentication > Settings > SMS Regions Policy, enable India (+91), or test with a registered Firebase test phone number.';
       }
       this.showToast(msg, 'error');
     } finally {
@@ -4721,7 +4725,10 @@ class ShopApp {
         this.showToast(errorMsg, 'error');
       }
     } catch (err) {
-      const msg = err.message || 'Password login verification failed.';
+      let msg = err.message || 'Password login verification failed.';
+      if (err.code === 'auth/operation-not-allowed' || (err.message && err.message.includes('region enabled'))) {
+        msg = '⚠️ SMS region policy blocked. In Firebase Console > Authentication > Settings > SMS Regions Policy, enable India (+91), or test with a registered Firebase test phone number.';
+      }
       if (this.digitsPasswordError) {
         this.digitsPasswordError.textContent = `⚠️ ${msg}`;
         this.digitsPasswordError.classList.remove('hidden');
