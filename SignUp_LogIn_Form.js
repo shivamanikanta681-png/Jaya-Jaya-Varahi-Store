@@ -3885,6 +3885,299 @@ class ShopApp {
     return dict.default || KB.en.default;
   }
 
+// ── THEME ENGINE (Light / Dark Mode) ──
+  initTheme() {
+    this.currentTheme = localStorage.getItem('jjv_theme') || 'light';
+    this.toggleThemeBtn = document.getElementById('toggle-theme-btn');
+    this.themeIcon = document.getElementById('theme-icon');
+    this.themeTooltip = document.getElementById('theme-tooltip');
+
+    this.applyTheme(this.currentTheme, false);
+
+    if (this.toggleThemeBtn) {
+      this.toggleThemeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const nextTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
+        this.applyTheme(nextTheme, true);
+        if (this.soundEnabled) this.playSound('toggle');
+      });
+    }
+  }
+
+  applyTheme(theme, notify = false) {
+    this.currentTheme = theme;
+    try {
+      localStorage.setItem('jjv_theme', theme);
+    } catch(e) {}
+
+    if (theme === 'dark') {
+      document.body.classList.add('dark-mode');
+      if (this.themeIcon) this.themeIcon.className = 'bx bxs-sun';
+      if (this.themeTooltip) this.themeTooltip.textContent = 'Light Mode';
+      if (this.toggleThemeBtn) {
+        this.toggleThemeBtn.title = 'Switch to Light Mode';
+        this.toggleThemeBtn.classList.add('theme-dark-active');
+      }
+      if (notify) this.showToast('🌙 Dark mode activated', 'info');
+    } else {
+      document.body.classList.remove('dark-mode');
+      if (this.themeIcon) this.themeIcon.className = 'bx bxs-moon';
+      if (this.themeTooltip) this.themeTooltip.textContent = 'Dark Mode';
+      if (this.toggleThemeBtn) {
+        this.toggleThemeBtn.title = 'Switch to Dark Mode';
+        this.toggleThemeBtn.classList.remove('theme-dark-active');
+      }
+      if (notify) this.showToast('☀️ Light mode activated', 'info');
+    }
+  }
+
+  // ── SOUND EFFECTS AUDIO ENGINE (Web Audio API) ──
+  initAudio() {
+    this.soundEnabled = localStorage.getItem('jjv_sound_enabled') !== 'false';
+    this.audioCtx = null;
+    this.toggleSoundBtn = document.getElementById('toggle-sound-btn');
+    this.soundIcon = document.getElementById('sound-icon');
+    this.soundText = document.getElementById('sound-text');
+
+    if (this.toggleSoundBtn) {
+      this.updateSoundBtnUI();
+      this.toggleSoundBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.soundEnabled = !this.soundEnabled;
+        localStorage.setItem('jjv_sound_enabled', this.soundEnabled ? 'true' : 'false');
+        this.updateSoundBtnUI();
+        if (this.soundEnabled) {
+          this.playSound('toggle');
+          this.showToast('🔊 Click sound effects enabled!', 'info');
+        } else {
+          this.showToast('🔇 Click sound effects muted.', 'info');
+        }
+      });
+    }
+
+    // Unlock AudioContext on first user interaction
+    const unlockAudio = () => {
+      try {
+        if (!this.audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) this.audioCtx = new AudioContextClass();
+        }
+        if (this.audioCtx && this.audioCtx.state === 'suspended') {
+          this.audioCtx.resume();
+        }
+      } catch (err) {}
+    };
+
+    ['click', 'touchstart', 'keydown'].forEach(evt => {
+      window.addEventListener(evt, unlockAudio, { once: true, capture: true });
+    });
+
+    // Global Click Sound Effects Listener (Capture phase guarantees sounds on any interactive click)
+    document.addEventListener('click', (e) => {
+      if (!this.soundEnabled) return;
+      unlockAudio();
+
+      const interactive = e.target.closest('button, a, input[type="radio"], input[type="checkbox"], select, .nav-btn, .quick-pill, .wishlist-heart-btn, .social-login-btn, .device-account-item, .product-card, .chat-add-btn, .modal-close-btn, .chatbot-close');
+      if (!interactive) return;
+
+      if (interactive.classList.contains('add-cart-btn') || interactive.classList.contains('chat-add-btn') || interactive.classList.contains('add-to-cart-btn')) {
+        this.playSound('cart');
+      } else if (interactive.closest('.wishlist-heart-btn') || interactive.id === 'catalog-wishlist-btn') {
+        this.playSound('wishlist');
+      } else if (interactive.classList.contains('social-login-btn') || interactive.classList.contains('device-account-item')) {
+        this.playSound('social');
+      } else if (interactive.classList.contains('modal-close-btn') || interactive.classList.contains('chatbot-close')) {
+        this.playSound('close');
+      } else if (interactive.id === 'place-order-btn' || (interactive.tagName === 'BUTTON' && interactive.type === 'submit')) {
+        this.playSound('success');
+      } else if (interactive.id !== 'toggle-sound-btn') {
+        this.playSound('click');
+      }
+    }, true);
+  }
+
+  updateSoundBtnUI() {
+    if (!this.soundIcon) return;
+    const tooltip = document.getElementById('sound-tooltip');
+    if (this.soundEnabled) {
+      this.soundIcon.className = 'bx bxs-volume-full';
+      if (this.soundText) this.soundText.textContent = 'Sound ON';
+      if (tooltip) tooltip.textContent = 'Sound: ON';
+      if (this.toggleSoundBtn) {
+        this.toggleSoundBtn.classList.remove('sound-muted');
+        this.toggleSoundBtn.title = 'Sound Effects: ON (Click to Mute)';
+      }
+    } else {
+      this.soundIcon.className = 'bx bxs-volume-mute';
+      if (this.soundText) this.soundText.textContent = 'Sound OFF';
+      if (tooltip) tooltip.textContent = 'Sound: OFF';
+      if (this.toggleSoundBtn) {
+        this.toggleSoundBtn.classList.add('sound-muted');
+        this.toggleSoundBtn.title = 'Sound Effects: OFF (Click to Unmute)';
+      }
+    }
+  }
+
+  playSound(type = 'click') {
+    if (!this.soundEnabled) return;
+    try {
+      if (!this.audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) this.audioCtx = new AudioContextClass();
+      }
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+      if (!this.audioCtx) return;
+
+      const now = this.audioCtx.currentTime;
+
+      if (type === 'click') {
+        // Subtle, crisp wooden modern UI tap
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(580, now);
+        osc.frequency.exponentialRampToValueAtTime(280, now + 0.04);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.05);
+      } else if (type === 'cart') {
+        // Rewarding upbeat 2-tone melodic chime (C5 -> G5)
+        const osc1 = this.audioCtx.createOscillator();
+        const gain1 = this.audioCtx.createGain();
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(523.25, now);
+        gain1.gain.setValueAtTime(0.12, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc1.connect(gain1);
+        gain1.connect(this.audioCtx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.13);
+
+        const osc2 = this.audioCtx.createOscillator();
+        const gain2 = this.audioCtx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(783.99, now + 0.08);
+        gain2.gain.setValueAtTime(0.15, now + 0.08);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+        osc2.connect(gain2);
+        gain2.connect(this.audioCtx.destination);
+        osc2.start(now + 0.08);
+        osc2.stop(now + 0.3);
+      } else if (type === 'wishlist') {
+        // Sweet pop sweep for love/wishlist
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      } else if (type === 'social') {
+        // Rich resonant pop tone
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(780, now + 0.09);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.11);
+      } else if (type === 'success') {
+        // Celebratory 4-note major fanfare
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          const osc = this.audioCtx.createOscillator();
+          const gain = this.audioCtx.createGain();
+          const t = now + (idx * 0.07);
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.12, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+          osc.connect(gain);
+          gain.connect(this.audioCtx.destination);
+          osc.start(t);
+          osc.stop(t + 0.28);
+        });
+      } else if (type === 'close') {
+        // Soft descending dismiss tone
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(420, now);
+        osc.frequency.exponentialRampToValueAtTime(220, now + 0.06);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.07);
+      } else if (type === 'toggle') {
+        // Quick high chime for sound toggle
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(750, now);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+      } else if (type === 'chat') {
+        // Gentle bubble ping for AI Chatbot
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(987.77, now);
+        osc.frequency.exponentialRampToValueAtTime(1318.51, now + 0.08);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.13);
+      }
+    } catch (e) {}
+  }
+
+  showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const iconMap = {
+      success: 'bx-check-circle',
+      error: 'bx-error-circle',
+      info: 'bx-info-circle'
+    };
+
+    toast.innerHTML = `<i class='bx ${iconMap[type] || 'bx-info-circle'}'></i> ${message}`;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(100%)';
+      toast.style.transition = 'all 0.3s ease';
+      setTimeout(() => toast.remove(), 300);
+    }, 3500);
+  }
+
   normalizeIndianPhone(raw) {
     if (!raw || typeof raw !== 'string') return null;
     let digits = raw.replace(/[\s\-().]/g, '');
@@ -4866,7 +5159,19 @@ class ShopApp {
 
 // ── INITIALIZE GLOBAL SHOP INSTANCE WHEN DOM READY ──
 let shopApp;
-document.addEventListener('DOMContentLoaded', () => {
-  shopApp = new ShopApp();
-  window.shopApp = shopApp;
-});
+function initShopApp() {
+  if (!window.shopApp) {
+    try {
+      shopApp = new ShopApp();
+      window.shopApp = shopApp;
+    } catch (err) {
+      console.error('❌ [ShopApp Initialization Error]', err);
+    }
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initShopApp);
+} else {
+  initShopApp();
+}
