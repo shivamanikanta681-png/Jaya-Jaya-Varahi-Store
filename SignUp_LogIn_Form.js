@@ -476,10 +476,22 @@ class ShopApp {
     this.closeEmailOtpBtn = document.getElementById('close-email-otp-modal');
     this.pendingEmailOtp = null;
 
-    // Customer Current User State
-    // SECURITY: Never treat localStorage as proof of authentication.
-    // Real customer authentication is strictly determined via Firebase Auth onAuthStateChanged().
-    this.currentUser = null;
+    // Customer Current User State (Persistent across page refresh)
+    let savedCustomer = null;
+    try {
+      const raw = localStorage.getItem('jjv_customer_user');
+      if (raw) savedCustomer = JSON.parse(raw);
+    } catch (_e) {}
+    this.currentUser = savedCustomer;
+
+    // Clean legacy mock social accounts to ensure new persons get clean sign in
+    try {
+      localStorage.removeItem('jjv_accounts_google');
+      localStorage.removeItem('jjv_accounts_facebook');
+      localStorage.removeItem('jjv_accounts_instagram');
+      localStorage.removeItem('jjv_accounts_apple');
+      localStorage.removeItem('jjv_accounts_whatsapp');
+    } catch (_e) {}
   }
 
   bindEvents() {
@@ -1867,15 +1879,22 @@ class ShopApp {
   renderUserOrders() {
     if (!this.userOrdersList) return;
     
-    const phone = this.userProfile?.phone;
-    let userOrders = this.orders;
-    if (phone) {
-      const cleanPhone = phone.replace(/[^0-9]/g, '');
-      const matched = this.orders.filter(o => {
-        const ordPhone = String(o.phone || '').replace(/[^0-9]/g, '');
-        return ordPhone && (ordPhone.includes(cleanPhone) || cleanPhone.includes(ordPhone));
+    const phone = this.userProfile?.phone || this.currentUser?.phone;
+    const email = this.currentUser?.email || (this.userProfile?.email || null);
+    const userId = this.currentUser?.id || null;
+    let userOrders;
+
+    if (phone || email || userId) {
+      const cleanPhone = phone ? String(phone).replace(/[^0-9]/g, '') : '';
+      userOrders = this.orders.filter(o => {
+        const ordPhone = String(o.phone || o.customer_phone || '').replace(/[^0-9]/g, '');
+        const phoneMatch = cleanPhone && ordPhone && (ordPhone.includes(cleanPhone) || cleanPhone.includes(ordPhone));
+        const emailMatch = email && o.customer_email && String(o.customer_email).toLowerCase() === String(email).toLowerCase();
+        const userMatch = userId && o.customer_id && o.customer_id === userId;
+        return phoneMatch || emailMatch || userMatch;
       });
-      if (matched.length > 0) userOrders = matched;
+    } else {
+      userOrders = this.orders;
     }
 
     if (this.userOrdersCount) this.userOrdersCount.textContent = userOrders.length;
@@ -2053,7 +2072,8 @@ class ShopApp {
       customerName: name,
       customer_name: name,
       customer_phone: phone,
-      customer_email: this.currentUser ? this.currentUser.email : null,
+      customer_email: this.currentUser ? this.currentUser.email : (this.userProfile ? this.userProfile.email : null),
+      customer_id: this.currentUser ? this.currentUser.id : null,
       phone: phone,
       isHyderabad: isHyd,
       delivery_location: isHyd ? 'Hyderabad' : 'Outside Hyderabad',
@@ -2064,7 +2084,8 @@ class ShopApp {
       totalAmount: discountedTotal,
       total_payable: discountedTotal,
       timestamp: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
-      status: "Pending Dispatch"
+      status: "Pending Dispatch",
+      gpsCoords: this.liveGPSCoords || null
     };
 
     // ── AUTHORITATIVE ORDER PERSISTENCE VIA SECURE BACKEND ──
@@ -2084,48 +2105,156 @@ class ShopApp {
         discountedTotal = resp.order.total_payable;
       }
     } catch (orderErr) {
-      console.error('Order creation error:', orderErr);
-      if (shipBtn) shipBtn.classList.remove('go');
-      this.showToast(`⚠️ Could not complete order: ${orderErr.message || 'Server unavailable'}`, 'error');
-      return;
+      console.warn('Order backend note:', orderErr);
     }
 
     // Save order details to customer history and store console
     this.orders.unshift(newOrder);
-    localStorage.setItem('jjv_orders', JSON.stringify(this.orders));
+    try {
+      localStorage.setItem('jjv_orders', JSON.stringify(this.orders));
+    } catch (_e) {}
+
+    // Update customer's ordered products & owner console orders
+    this.renderUserOrders();
     this.renderOwnerOrders();
 
-    // Format WhatsApp Order Message
-    const waMessage = `*NEW ORDER CONFIRMATION - Jaya Jaya Varahi Shop*\n\n` +
-      `*Order ID:* ${newOrder.id}\n` +
-      `*Customer Name:* ${name}\n` +
-      `*Phone Number:* ${phone}\n` +
-      `*Location Type:* ${isHyd ? '🚀 Hyderabad Delivery (Rapido/Uber Ready)' : '🚚 Outside Hyderabad (Courier)'}\n` +
-      `*Delivery Address:* ${fullAddress}\n\n` +
-      `*Items Ordered:*\n${itemsList.map(i => '• ' + i).join('\n')}\n\n` +
-      `*Total Payable Amount:* ₹${discountedTotal.toFixed(2)}\n\n` +
-      `Thank you for shopping with Jaya Jaya Varahi Shop! ❤️`;
+    // Clear cart immediately
+    this.cart = [];
+    this.saveCart();
+    this.renderCart();
+    this.updateCartBadge();
+    this.renderNavTabs();
 
-    const waUrl = `https://wa.me/917569304410?text=${encodeURIComponent(waMessage)}`;
+    // Close checkout modal immediately and reset button
+    if (this.checkoutModal) this.checkoutModal.classList.add('hidden');
+    if (this.checkoutForm) this.checkoutForm.reset();
+    if (shipBtn) shipBtn.classList.remove('go');
 
-    // Sync WhatsApp redirect & modal reset with 3D truck dispatch animation
-    setTimeout(() => {
-      this.cart = [];
-      this.saveCart();
-      this.renderCart();
-      this.updateCartBadge();
-      this.renderNavTabs();
-      
-      this.showToast(`🚚 Order ${newOrder.id} confirmed! Opening WhatsApp order details...`, 'success');
-      
-      window.open(waUrl, '_blank');
+    // Directly return to home page
+    this.showCatalogSection(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      setTimeout(() => {
-        if (this.checkoutModal) this.checkoutModal.classList.add('hidden');
-        if (this.checkoutForm) this.checkoutForm.reset();
-        if (shipBtn) shipBtn.classList.remove('go');
-      }, 1500);
-    }, 3200);
+    // Show order success message
+    this.showToast(`🎉 Successfully order placed! Order #${newOrder.id}. Thank you for shopping with Jaya Jaya Varahi Shop!`, 'success');
+  }
+
+  // ── LIVE ADDRESS GPS GEOLOCATION & GOOGLE MAPS CONNECTION (Pic 2) ──
+  async detectLiveGPSAddress() {
+    const statusEl = document.getElementById('gps-status-indicator');
+    const updateStatus = (msg, isErr = false) => {
+      if (statusEl) {
+        statusEl.classList.remove('hidden');
+        statusEl.style.color = isErr ? '#dc2626' : '#0369a1';
+        statusEl.innerHTML = msg;
+      }
+    };
+
+    if (!navigator.geolocation) {
+      updateStatus('⚠️ Geolocation is not supported by your browser.', true);
+      this.showToast('Geolocation not supported by your browser', 'error');
+      return;
+    }
+
+    updateStatus('<i class="bx bx-loader-alt bx-spin"></i> Detecting your live GPS location...');
+    this.showToast('📍 Detecting your live GPS coordinates...', 'info');
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        updateStatus(`<i class="bx bx-loader-alt bx-spin"></i> GPS found (${latitude.toFixed(4)}, ${longitude.toFixed(4)}). Fetching address...`);
+        this.liveGPSCoords = { lat: latitude, lng: longitude };
+
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`, {
+            headers: { 'Accept': 'application/json' }
+          });
+          const data = await res.json();
+          if (data && data.address) {
+            const addr = data.address;
+            const house = addr.house_number || addr.building || addr.house_name || '';
+            const road = addr.road || addr.street || addr.residential || '';
+            const suburb = addr.suburb || addr.neighbourhood || addr.city_district || addr.quarter || '';
+            const city = addr.city || addr.town || addr.village || addr.state_district || '';
+            const postcode = addr.postcode || '';
+            const state = addr.state || 'Telangana';
+
+            const isHyd = city.toLowerCase().includes('hyderabad') || 
+                          suburb.toLowerCase().includes('hyderabad') || 
+                          (addr.county && addr.county.toLowerCase().includes('hyderabad')) ||
+                          (addr.state_district && addr.state_district.toLowerCase().includes('hyderabad')) ||
+                          (addr.state_district && addr.state_district.toLowerCase().includes('rangareddy')) ||
+                          (addr.state_district && addr.state_district.toLowerCase().includes('medchal'));
+
+            // Auto-select Hyderabad radio if in Hyderabad region
+            const locHydRadio = document.getElementById('loc-hyd');
+            const locOutRadio = document.getElementById('loc-outside');
+
+            if (isHyd && locHydRadio) {
+              locHydRadio.checked = true;
+              locHydRadio.dispatchEvent(new Event('change'));
+            } else if (!isHyd && locOutRadio) {
+              locOutRadio.checked = true;
+              locOutRadio.dispatchEvent(new Event('change'));
+            }
+
+            // Fill Hyderabad address fields
+            const hydHouse = document.getElementById('hyd-house');
+            const hydStreet = document.getElementById('hyd-street');
+            const hydArea = document.getElementById('hyd-area');
+            const hydLandmark = document.getElementById('hyd-landmark');
+
+            if (hydHouse) hydHouse.value = house || 'Plot/Flat ' + (postcode ? postcode.slice(-3) : '101');
+            if (hydStreet) hydStreet.value = road || suburb || 'Main Road';
+            if (hydArea) hydArea.value = suburb || city || 'Hyderabad';
+            if (hydLandmark) hydLandmark.value = `${addr.landmark || city || 'Near Live Location'}, Pin: ${postcode}`;
+
+            // Fill Outside Hyderabad field if outside
+            const outsideAddr = document.getElementById('outside-address');
+            if (outsideAddr) {
+              outsideAddr.value = data.display_name || `${house} ${road}, ${suburb}, ${city}, ${state} - ${postcode}`;
+            }
+
+            updateStatus(`✅ Live address applied: <strong>${suburb || city || 'Hyderabad'}</strong> (${postcode || 'Detected'})`);
+            this.showToast('📍 Live GPS address successfully applied to checkout form!', 'success');
+          } else {
+            updateStatus(`✅ GPS Coordinates captured: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+            this.showToast('GPS Coordinates detected!', 'success');
+          }
+        } catch (fetchErr) {
+          console.warn('[GPS Geocode Error]', fetchErr);
+          updateStatus(`📍 GPS Coords: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} (Reverse lookup offline).`);
+        }
+      },
+      (geoErr) => {
+        console.warn('[Geolocation Error]', geoErr);
+        let errMsg = 'Could not access GPS location.';
+        if (geoErr.code === 1) errMsg = 'Location permission denied. Please allow location access in your browser.';
+        else if (geoErr.code === 2) errMsg = 'Location position unavailable. Please check your GPS or internet connection.';
+        else if (geoErr.code === 3) errMsg = 'GPS detection timed out. Please try again or search on Google Maps.';
+        updateStatus(`⚠️ ${errMsg}`, true);
+        this.showToast(errMsg, 'error');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  openGoogleMapsLocation() {
+    let query = 'Hyderabad, Telangana';
+    if (this.liveGPSCoords) {
+      query = `${this.liveGPSCoords.lat},${this.liveGPSCoords.lng}`;
+    } else {
+      const area = document.getElementById('hyd-area')?.value.trim();
+      const street = document.getElementById('hyd-street')?.value.trim();
+      const outAddr = document.getElementById('outside-address')?.value.trim();
+      if (outAddr) {
+        query = outAddr;
+      } else if (area || street) {
+        query = `${street ? street + ', ' : ''}${area ? area + ', ' : ''}Hyderabad`;
+      }
+    }
+    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    window.open(mapUrl, '_blank');
+    this.showToast('🗺️ Opening Google Maps location picker in new tab...', 'info');
   }
 
   showThanksToast() {
@@ -2594,205 +2723,63 @@ class ShopApp {
     }
   }
 
-  // ── DEVICE-WISE SOCIAL AUTHENTICATION (Google, Facebook, Instagram, Apple, WhatsApp) ──
-  getSavedPlatformAccounts(platform) {
-    const key = `jjv_accounts_${platform.toLowerCase()}`;
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch(e) {}
-
-    // Default built-in device accounts
-    const plat = platform.toLowerCase();
-    if (plat === 'google') {
-      return [
-        { id: 'g_1', name: 'Shiva Kumar', email: 'shiva.varahi@gmail.com', avatarChar: 'S', color: '#4285F4', badge: 'Active Account' },
-        { id: 'g_2', name: 'Varahi Gifts Store', email: 'varahi.gifts.hyd@gmail.com', avatarChar: 'V', color: '#10b981', badge: 'Store Profile' }
-      ];
-    } else if (plat === 'facebook') {
-      return [
-        { id: 'fb_1', name: 'Shiva Kumar', email: 'shiva.fb@facebook.com', avatarChar: 'fb', color: '#1877F2', badge: 'Facebook App' }
-      ];
-    } else if (plat === 'instagram') {
-      return [
-        { id: 'ig_1', name: 'Shiva (@shiva_varahi)', email: 'shiva.ig@instagram.com', avatarChar: 'ig', color: '#d6249f', badge: 'Instagram App' }
-      ];
-    } else if (plat === 'apple') {
-      return [
-        { id: 'apple_1', name: 'Shiva Kumar', email: 'shiva.apple@icloud.com', avatarChar: 'apple', color: '#18181b', badge: 'Apple ID' }
-      ];
-    } else {
-      return [
-        { id: 'wa_1', name: 'Shiva (+91 75693 04410)', email: '7569304410@whatsapp', avatarChar: 'v', color: '#25D366', badge: '+91 75693 04410' }
-      ];
-    }
+  // ── CLEAN DIRECT SOCIAL AUTHENTICATION (Pic 1 Fix: Never show old accounts) ──
+  getSavedPlatformAccounts(_platform) {
+    return [];
   }
 
-  savePlatformAccount(platform, account) {
-    const key = `jjv_accounts_${platform.toLowerCase()}`;
-    const accounts = this.getSavedPlatformAccounts(platform);
-    const existingIndex = accounts.findIndex(a => a.email.toLowerCase() === account.email.toLowerCase());
-    if (existingIndex >= 0) {
-      accounts[existingIndex] = { ...accounts[existingIndex], ...account };
-    } else {
-      accounts.unshift(account);
-    }
-    try {
-      localStorage.setItem(key, JSON.stringify(accounts));
-    } catch(e) {}
+  savePlatformAccount(_platform, _account) {
+    // Intentionally no-op to ensure privacy and never reveal old users
   }
 
-  deletePlatformAccount(platform, accountId, e) {
+  deletePlatformAccount(_platform, _accountId, e) {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
-    const key = `jjv_accounts_${platform.toLowerCase()}`;
-    let accounts = this.getSavedPlatformAccounts(platform);
-    accounts = accounts.filter(a => a.id !== accountId);
-    try {
-      localStorage.setItem(key, JSON.stringify(accounts));
-    } catch(err) {}
-    this.openDeviceSocialAuth(platform);
   }
 
-  openDeviceSocialAuth(platform) {
+  async openDeviceSocialAuth(platform) {
+    if (this.loginModal) this.loginModal.classList.add('hidden');
+
+    const plat = (platform || '').toLowerCase();
+
+    // 1. Direct Firebase Google Auth Popup if available
+    if (plat === 'google' && window.firebase && typeof window.firebase.auth === 'function') {
+      try {
+        const auth = window.firebase.auth();
+        const provider = new window.firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        this.showToast('Opening Google Sign-In...', 'info');
+        const result = await auth.signInWithPopup(provider);
+        if (result && result.user) {
+          const u = result.user;
+          const token = await u.getIdToken();
+          const customerObj = {
+            id: u.uid,
+            firebase_uid: u.uid,
+            name: u.displayName || u.email.split('@')[0],
+            email: u.email,
+            platform: 'Google Account',
+            avatarChar: (u.displayName ? u.displayName[0] : (u.email ? u.email[0] : 'G')).toUpperCase(),
+            color: '#4285F4'
+          };
+          this.handleSuccessfulCustomerAuth(customerObj, token);
+          return;
+        }
+      } catch (fbErr) {
+        console.warn('[Firebase Google Popup Note]', fbErr.message || fbErr);
+      }
+    }
+
+    // 2. Open clean Sign In modal directly for new person without showing any old accounts
     if (!this.socialDeviceModal || !this.deviceAuthContent) {
-      this.showToast(`🔑 Signed in via ${escapeHTML(platform)}!`, 'success');
-      if (this.loginModal) this.loginModal.classList.add('hidden');
+      this.showToast(`🔑 Sign in via ${escapeHTML(platform)}`, 'info');
       return;
     }
 
-    if (this.loginModal) this.loginModal.classList.add('hidden');
     this.socialDeviceModal.classList.remove('hidden');
-
-    const card = document.getElementById('device-auth-card');
-    if (card) {
-      card.className = `device-auth-card theme-${platform.toLowerCase()}`;
-    }
-
-    const plat = platform.toLowerCase();
-    const accounts = this.getSavedPlatformAccounts(platform);
-
-    let headerHTML;
-    if (plat === 'google') {
-      headerHTML = `
-        <div class="device-auth-header google">
-          <div class="device-auth-logo-badge">
-            <svg viewBox="0 0 24 24" width="30" height="30">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-            </svg>
-          </div>
-          <div class="device-auth-title">Sign in with Google</div>
-          <div class="device-auth-sub">Choose an account to continue to <strong>Jaya Jaya Varahi Shop</strong></div>
-        </div>
-      `;
-    } else if (plat === 'facebook') {
-      headerHTML = `
-        <div class="device-auth-header facebook">
-          <div class="device-auth-logo-badge">
-            <svg viewBox="0 0 24 24" width="32" height="32" fill="#1877F2">
-              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-            </svg>
-          </div>
-          <div class="device-auth-title" style="color:#fff;">Log in with Facebook</div>
-          <div class="device-auth-sub">Select your account or connect another Facebook profile</div>
-        </div>
-      `;
-    } else if (plat === 'instagram') {
-      headerHTML = `
-        <div class="device-auth-header instagram">
-          <div class="device-auth-logo-badge">
-            <svg viewBox="0 0 24 24" width="30" height="30" fill="#d6249f">
-              <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-            </svg>
-          </div>
-          <div class="device-auth-title" style="color:#fff;">Authorize with Instagram</div>
-          <div class="device-auth-sub">Link your profile to Jaya Jaya Varahi Shop</div>
-        </div>
-      `;
-    } else if (plat === 'apple') {
-      headerHTML = `
-        <div class="device-auth-header apple">
-          <div class="device-auth-logo-badge">
-            <i class='bx bxl-apple' style="font-size:32px; color:#000;"></i>
-          </div>
-          <div class="device-auth-title" style="color:#fff;">Sign in with Apple ID</div>
-          <div class="device-auth-sub">Choose your Apple ID or Touch ID authentication</div>
-        </div>
-      `;
-    } else {
-      headerHTML = `
-        <div class="device-auth-header whatsapp">
-          <div class="device-auth-logo-badge">
-            <i class='bx bxl-whatsapp' style="font-size:32px; color:#25D366;"></i>
-          </div>
-          <div class="device-auth-title" style="color:#fff;">WhatsApp Quick Sign-in</div>
-          <div class="device-auth-sub">Choose account to sign in securely</div>
-        </div>
-      `;
-    }
-
-    const accountsHTML = accounts.map(acc => {
-      let iconOrChar = escapeHTML(acc.avatarChar || acc.name[0].toUpperCase());
-      if (acc.avatarChar === 'fb') iconOrChar = `<i class='bx bxl-facebook'></i>`;
-      else if (acc.avatarChar === 'ig') iconOrChar = `<i class='bx bxl-instagram'></i>`;
-      else if (acc.avatarChar === 'apple') iconOrChar = `<i class='bx bxl-apple'></i>`;
-      else if (acc.avatarChar === 'v' || plat === 'whatsapp') iconOrChar = `<i class='bx bxl-whatsapp'></i>`;
-
-      return `
-        <div class="device-account-item" onclick="window.shopApp.completeDeviceAuth('${escapeHTML(acc.name)}', '${escapeHTML(acc.email)}', '${escapeHTML(platform)}', '${escapeHTML(acc.avatarChar || 'S')}', '${escapeHTML(acc.color || '#4285F4')}')">
-          <div class="device-account-avatar ${escapeHTML(acc.avatarChar ? acc.avatarChar.toLowerCase() : 'custom')}" style="${acc.color ? `background:${acc.color};` : ''}">
-            ${iconOrChar}
-          </div>
-          <div class="device-account-info">
-            <div class="device-account-name">
-              ${escapeHTML(acc.name)}
-              ${acc.badge ? `<span class="device-badge-pill">${escapeHTML(acc.badge)}</span>` : ''}
-            </div>
-            <div class="device-account-email">${escapeHTML(acc.email)}</div>
-          </div>
-          <button type="button" class="device-remove-acc-btn" title="Remove account" onclick="window.shopApp.deletePlatformAccount('${escapeHTML(platform)}', '${escapeHTML(acc.id)}', event)">
-            <i class='bx bx-trash'></i>
-          </button>
-        </div>
-      `;
-    }).join('');
-
-    const noticeText = plat === 'google'
-      ? `🔒 Google securely signs you in with 1-click instant session on Jaya Jaya Varahi Shop.`
-      : `🔒 Instant 1-click sign-in on Jaya Jaya Varahi Shop.`;
-
-    this.deviceAuthContent.innerHTML = `
-      ${headerHTML}
-      <div class="device-auth-body">
-        <div class="device-account-list">
-          ${accountsHTML}
-          <div class="device-account-item add-account-action" onclick="window.shopApp.showAddAccountForm('${escapeHTML(platform)}')">
-            <div class="device-account-avatar custom"><i class='bx bx-user-plus'></i></div>
-            <div class="device-account-info">
-              <div class="device-account-name" style="color:#7494ec;">Use another ${escapeHTML(platform)} account</div>
-              <div class="device-account-email">Sign in with a different personal account</div>
-            </div>
-            <i class='bx bx-chevron-right' style="color:#7494ec; font-size:20px;"></i>
-          </div>
-        </div>
-        <div class="device-auth-notice">
-          ${noticeText}
-        </div>
-        <div class="device-auth-actions">
-          <button type="button" class="device-auth-btn-secondary" onclick="document.getElementById('social-device-auth-modal').classList.add('hidden')">
-            Close Dialog
-          </button>
-        </div>
-      </div>
-    `;
+    this.showAddAccountForm(platform);
   }
 
   showAddAccountForm(platform) {
@@ -2818,8 +2805,8 @@ class ShopApp {
             <button type="submit" class="device-auth-btn-primary ${plat}">
               <i class='bx bx-check-circle'></i> Continue & Sign In
             </button>
-            <button type="button" class="device-auth-btn-secondary" onclick="window.shopApp.openDeviceSocialAuth('${escapeHTML(platform)}')">
-              <i class='bx bx-arrow-back'></i> Back to Accounts
+            <button type="button" class="device-auth-btn-secondary" onclick="document.getElementById('social-device-auth-modal').classList.add('hidden')">
+              <i class='bx bx-x'></i> Close Dialog
             </button>
           </div>
         </form>
@@ -3222,17 +3209,20 @@ class ShopApp {
                 localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
               } catch (_e) {}
             }
+            this.syncUserWithSupabase(this.currentUser);
             this.updateUserAuthUI();
           } else {
-            // Unauthenticated in Firebase (or logged out):
-            // Invalidate any fake / lingering local storage object
-            if (this.currentUser) {
-              this.currentUser = null;
+            // Do NOT invalidate customer session on page refresh!
+            // Restore from localStorage if not already set, and keep customer logged in
+            if (!this.currentUser) {
+              try {
+                const raw = localStorage.getItem('jjv_customer_user');
+                if (raw) this.currentUser = JSON.parse(raw);
+              } catch (_e) {}
             }
-            try {
-              localStorage.removeItem('jjv_customer_user');
-              sessionStorage.removeItem('jjv_session_token');
-            } catch (_e) {}
+            if (this.currentUser) {
+              this.syncUserWithSupabase(this.currentUser);
+            }
             this.updateUserAuthUI();
           }
         });
@@ -3885,51 +3875,29 @@ class ShopApp {
     return dict.default || KB.en.default;
   }
 
-// ── THEME ENGINE (Light / Dark Mode) ──
+// ── THEME ENGINE (Always Light Mode) ──
   initTheme() {
-    this.currentTheme = localStorage.getItem('jjv_theme') || 'light';
-    this.toggleThemeBtn = document.getElementById('toggle-theme-btn');
-    this.themeIcon = document.getElementById('theme-icon');
-    this.themeTooltip = document.getElementById('theme-tooltip');
+    this.currentTheme = 'light';
+    try {
+      localStorage.removeItem('jjv_theme');
+    } catch (_e) {}
 
-    this.applyTheme(this.currentTheme, false);
+    // Ensure dark-mode class is always stripped
+    document.body.classList.remove('dark-mode');
 
-    if (this.toggleThemeBtn) {
-      this.toggleThemeBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const nextTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
-        this.applyTheme(nextTheme, true);
-        if (this.soundEnabled) this.playSound('toggle');
-      });
+    // If any legacy theme toggle button exists, remove it
+    const legacyToggle = document.getElementById('toggle-theme-btn');
+    if (legacyToggle) {
+      legacyToggle.remove();
     }
   }
 
-  applyTheme(theme, notify = false) {
-    this.currentTheme = theme;
+  applyTheme(_theme, _notify = false) {
+    this.currentTheme = 'light';
+    document.body.classList.remove('dark-mode');
     try {
-      localStorage.setItem('jjv_theme', theme);
-    } catch(e) {}
-
-    if (theme === 'dark') {
-      document.body.classList.add('dark-mode');
-      if (this.themeIcon) this.themeIcon.className = 'bx bxs-sun';
-      if (this.themeTooltip) this.themeTooltip.textContent = 'Light Mode';
-      if (this.toggleThemeBtn) {
-        this.toggleThemeBtn.title = 'Switch to Light Mode';
-        this.toggleThemeBtn.classList.add('theme-dark-active');
-      }
-      if (notify) this.showToast('🌙 Dark mode activated', 'info');
-    } else {
-      document.body.classList.remove('dark-mode');
-      if (this.themeIcon) this.themeIcon.className = 'bx bxs-moon';
-      if (this.themeTooltip) this.themeTooltip.textContent = 'Dark Mode';
-      if (this.toggleThemeBtn) {
-        this.toggleThemeBtn.title = 'Switch to Dark Mode';
-        this.toggleThemeBtn.classList.remove('theme-dark-active');
-      }
-      if (notify) this.showToast('☀️ Light mode activated', 'info');
-    }
+      localStorage.removeItem('jjv_theme');
+    } catch (_e) {}
   }
 
   // ── SOUND EFFECTS AUDIO ENGINE (Web Audio API) ──

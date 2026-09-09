@@ -467,10 +467,6 @@
 
     <!-- Floating Quick Action Buttons on Bottom Left -->
     <div class="floating-quick-actions">
-        <button type="button" id="toggle-theme-btn" class="float-btn float-theme" title="Toggle Dark/Light Mode" aria-label="Toggle Dark/Light Mode">
-            <i class='bx bxs-moon' id="theme-icon"></i>
-            <span class="float-tooltip" id="theme-tooltip">Dark Mode</span>
-        </button>
         <button type="button" id="toggle-sound-btn" class="float-btn float-sound" title="Toggle Sound Effects" aria-label="Toggle Sound Effects">
             <i class='bx bxs-volume-full' id="sound-icon"></i>
             <span class="float-tooltip" id="sound-tooltip">Sound: ON</span>
@@ -611,7 +607,7 @@
                             <span>or continue with</span>
                         </div>
 
-                        <!-- Social Platforms -->
+                        <!-- Social Platforms: Clean 1-Click Sign-In -->
                         <div class="social-icons digits-social-icons">
                             <button type="button" data-platform="Google" class="social-login-btn google" title="Sign in with Google" aria-label="Sign in with Google">
                                 <svg viewBox="0 0 24 24" width="30" height="30" xmlns="http://www.w3.org/2000/svg">
@@ -622,29 +618,11 @@
                                 </svg>
                                 <span class="social-tooltip">Google</span>
                             </button>
-                            <button type="button" data-platform="Facebook" class="social-login-btn facebook" title="Sign in with Facebook" aria-label="Sign in with Facebook">
-                                <svg viewBox="0 0 24 24" width="30" height="30" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                                </svg>
-                                <span class="social-tooltip">Facebook</span>
-                            </button>
-                            <button type="button" data-platform="Instagram" class="social-login-btn instagram" title="Sign in with Instagram" aria-label="Sign in with Instagram">
-                                <svg viewBox="0 0 24 24" width="30" height="30" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-                                </svg>
-                                <span class="social-tooltip">Instagram</span>
-                            </button>
                             <button type="button" data-platform="Apple" class="social-login-btn apple" title="Sign in with Apple" aria-label="Sign in with Apple">
                                 <svg viewBox="0 0 24 24" width="30" height="30" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 1.01-2.88-.93.04-2.06.62-2.73 1.4-.59.68-1.11 1.76-.97 2.8 1.04.08 2.07-.57 2.69-1.32z"/>
                                 </svg>
                                 <span class="social-tooltip">Apple</span>
-                            </button>
-                            <button type="button" data-platform="WhatsApp" class="social-login-btn whatsapp" title="Sign in with WhatsApp" aria-label="Sign in with WhatsApp">
-                                <svg viewBox="0 0 24 24" width="30" height="30" fill="#ffffff" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M17.472 14.382c-.301-.15-1.782-.879-2.058-.979-.276-.1-.477-.15-.678.15-.201.3-.778.979-.954 1.18-.176.2-.351.226-.652.075s-1.272-.469-2.423-1.496c-.896-.799-1.501-1.787-1.677-2.088-.176-.301-.019-.464.132-.614.136-.135.301-.351.452-.527.15-.176.201-.301.301-.502.101-.2.05-.376-.025-.526s-.678-1.633-.929-2.235c-.244-.585-.493-.506-.678-.515-.175-.008-.376-.01-.577-.01s-.527.075-.803.376c-.276.301-1.054 1.029-1.054 2.509s1.079 2.91 1.229 3.11c.15.2 2.124 3.243 5.145 4.547.719.311 1.28.497 1.718.636.722.229 1.378.197 1.898.119.579-.087 1.782-.728 2.033-1.431.251-.703.251-1.305.176-1.431-.076-.126-.276-.201-.577-.351zm-5.467 7.423c-2.023 0-4.004-.544-5.733-1.572l-.411-.244-4.261 1.118 1.137-4.154-.268-.426C1.352 14.73 0.8 12.632 0.8 10.468 0.8 4.706 5.506 0 11.268 0c2.793 0 5.419 1.088 7.394 3.064 1.975 1.976 3.063 4.602 3.063 7.394 0 5.762-4.706 11.347-10.72 11.347z"/>
-                                </svg>
-                                <span class="social-tooltip">WhatsApp</span>
                             </button>
                         </div>
                     </div>
@@ -816,6 +794,21 @@
                                 <span>🚚 No, Outside Hyderabad (Standard Express Courier)</span>
                             </label>
                         </div>
+                    </div>
+
+                    <!-- Live Address & GPS Geolocation Action Bar (Pic 2) -->
+                    <div class="form-group span-2 gps-actions-container" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; margin-bottom:12px;">
+                        <div class="gps-toolbar" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                            <button type="button" class="btn-gps-detect" id="btn-detect-gps" onclick="window.shopApp?.detectLiveGPSAddress();" style="display:inline-flex; align-items:center; gap:6px; background:#0ea5e9; color:#ffffff; border:none; border-radius:24px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; box-shadow:0 2px 6px rgba(14,165,233,0.3); transition:all 0.2s ease;">
+                                <i class='bx bx-current-location' style="font-size:16px;"></i>
+                                <span>📍 Use Live GPS Location</span>
+                            </button>
+                            <button type="button" class="btn-map-pin" id="btn-open-map-pin" onclick="window.shopApp?.openGoogleMapsLocation();" style="display:inline-flex; align-items:center; gap:6px; background:#ffffff; color:#0f172a; border:1px solid #cbd5e1; border-radius:24px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s ease;">
+                                <i class='bx bxs-map-pin' style="color:#ef4444; font-size:16px;"></i>
+                                <span>🗺️ Select on Google Maps</span>
+                            </button>
+                        </div>
+                        <div id="gps-status-indicator" class="gps-status-pill hidden" style="margin-top:8px; font-size:12.5px; color:#0369a1; font-weight:500;"></div>
                     </div>
 
                     <!-- Hyderabad Specific Address Fields -->

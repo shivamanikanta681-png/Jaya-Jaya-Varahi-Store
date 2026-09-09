@@ -7306,4 +7306,105 @@ body.dark-mode .auth-tab-btn.active {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
 }
 
+/* ── PERMANENT LIGHT MODE ENFORCEMENT ── */
+:root {
+  color-scheme: light !important;
+}
+body {
+  color-scheme: light !important;
+}
+#toggle-theme-btn {
+  display: none !important;
+}
+
+/* ── LIVE ADDRESS GPS GEOLOCATION & GOOGLE MAPS ACTION BAR (Pic 2) ── */
+.gps-actions-container {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  transition: all 0.25s ease;
+}
+
+.gps-actions-container:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.gps-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.btn-gps-detect {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+  color: #ffffff !important;
+  border: none;
+  border-radius: 28px;
+  padding: 9px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 3px 8px rgba(14, 165, 233, 0.35);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-gps-detect:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+  transform: translateY(-1.5px);
+  box-shadow: 0 5px 14px rgba(14, 165, 233, 0.45);
+}
+
+.btn-gps-detect:active {
+  transform: translateY(0);
+}
+
+.btn-map-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #ffffff;
+  color: #1e293b !important;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 28px;
+  padding: 8.5px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-map-pin:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a !important;
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+.btn-map-pin:active {
+  transform: translateY(0);
+}
+
+.gps-status-pill {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #0369a1;
+  font-weight: 500;
+  padding: 6px 12px;
+  background: #e0f2fe;
+  border-radius: 8px;
+  border-left: 3px solid #0284c7;
+  animation: fadeInDown 0.3s ease;
+}
+
+
 
