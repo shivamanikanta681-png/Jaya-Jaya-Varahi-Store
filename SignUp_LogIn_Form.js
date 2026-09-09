@@ -893,6 +893,7 @@ class ShopApp {
             if (this.ownerConsoleModal) this.ownerConsoleModal.classList.remove('hidden');
             this.renderOwnerInventory();
             this.renderOwnerOrders();
+            this.loadOwnerOrders();
             this.showToast('Welcome Owner! Console unlocked.', 'success');
           } else {
             if (this.authErrorMsg) this.authErrorMsg.classList.remove('hidden');
@@ -924,6 +925,9 @@ class ShopApp {
           btn.classList.add('active');
           const targetTab = document.getElementById(btn.dataset.tab);
           if (targetTab) targetTab.classList.add('active');
+          if (btn.dataset.tab === 'tab-orders') {
+            this.loadOwnerOrders();
+          }
         });
       });
     }
@@ -2760,11 +2764,46 @@ class ShopApp {
     }).join('');
   }
 
+  async loadOwnerOrders() {
+    if (!this.adminToken) return;
+    try {
+      const res = await apiRequest('/api/admin/orders', { method: 'GET' });
+      if (res && res.success && Array.isArray(res.orders) && res.orders.length > 0) {
+        const normalized = res.orders.map(o => ({
+          id: o.order_number || o.id,
+          timestamp: o.created_at ? new Date(o.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : (o.timestamp || new Date().toLocaleString()),
+          customerName: o.customer_name || o.customerName || 'Customer',
+          phone: o.customer_phone || o.phone || '',
+          email: o.customer_email || o.email || '',
+          isHyderabad: (o.delivery_location || '').toLowerCase().includes('hyderabad') && !(o.delivery_location || '').toLowerCase().includes('outside'),
+          addressDetails: o.delivery_address || o.addressDetails || '',
+          pincode: o.pincode || '',
+          items: (o.items || []).map(it => ({
+            productId: it.productId || it.id || '',
+            name: it.name || '',
+            qty: it.qty || 1,
+            unitPrice: it.unitPrice || it.price || 0
+          })),
+          totalAmount: parseFloat(o.total_payable || o.totalAmount || 0),
+          status: o.status || 'Pending Dispatch'
+        }));
+        this.orders = normalized;
+        localStorage.setItem('jjv_orders', JSON.stringify(this.orders));
+        this.renderOwnerOrders();
+      }
+    } catch (err) {
+      console.warn('[Admin] Note loading orders from server/database:', err.message || err);
+    }
+  }
+
   deleteOrderFromConsole(orderId) {
     if (confirm('Are you sure you want to delete this customer order?')) {
       this.orders = this.orders.filter(o => o.id !== orderId);
       localStorage.setItem('jjv_orders', JSON.stringify(this.orders));
       this.renderOwnerOrders();
+      if (this.adminToken) {
+        apiRequest(`/api/admin/orders?id=${encodeURIComponent(orderId)}`, { method: 'DELETE' }).catch(() => {});
+      }
       this.showToast('Order removed from owner console', 'info');
     }
   }

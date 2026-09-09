@@ -979,6 +979,40 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": f"Product delete error: {str(e)}"}).encode("utf-8"))
             return
 
+        # ── ROUTE: ADMIN ORDER DELETE ──
+        if req_path == "/api/admin/orders":
+            if not is_authenticated_admin(self.headers):
+                self._set_cors_headers(403)
+                self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
+                return
+
+            order_id = query_params.get("id", [None])[0]
+            if not order_id:
+                self._set_cors_headers(400)
+                self.wfile.write(json.dumps({"success": False, "error": "Order ID is required"}).encode("utf-8"))
+                return
+
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                client.table("orders").delete().eq("order_number", order_id).execute()
+            except Exception:
+                pass
+
+            if ORDERS_FILE.exists():
+                try:
+                    with open(ORDERS_FILE, "r", encoding="utf-8") as f:
+                        current = json.loads(f.read().strip() or "[]")
+                    updated = [o for o in current if o.get("order_number") != order_id and o.get("id") != order_id]
+                    with open(ORDERS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(updated, f, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+
+            self._set_cors_headers(200)
+            self.wfile.write(json.dumps({"success": True, "message": f"Order {order_id} deleted successfully"}).encode("utf-8"))
+            return
+
         self._set_cors_headers(404)
         self.wfile.write(json.dumps({"success": False, "error": "Endpoint not found"}).encode("utf-8"))
 
@@ -1009,6 +1043,34 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "store_info": rag.kb.store_info,
                 "categories": list(set(c.get("category") for c in rag.kb.chunks))
             }).encode("utf-8"))
+            return
+
+        # ── ADMIN GET ORDERS ENDPOINT ──
+        if req_path == "/api/admin/orders":
+            if not is_authenticated_admin(self.headers):
+                self._set_cors_headers(403)
+                self.wfile.write(json.dumps({"success": False, "error": "Unauthorized: Admin session required"}).encode("utf-8"))
+                return
+
+            orders_list = []
+            try:
+                from supabase_client import get_supabase
+                client = get_supabase(admin=True)
+                res = client.table("orders").select("*").order("created_at", desc=True).execute()
+                if res.data:
+                    orders_list = res.data
+            except Exception as sb_err:
+                print(f"[Admin Orders Note] Supabase query: {sb_err}")
+
+            if not orders_list and ORDERS_FILE.exists():
+                try:
+                    with open(ORDERS_FILE, "r", encoding="utf-8") as f:
+                        orders_list = json.loads(f.read().strip() or "[]")
+                except Exception:
+                    pass
+
+            self._set_cors_headers(200)
+            self.wfile.write(json.dumps({"success": True, "orders": orders_list}).encode("utf-8"))
             return
 
         # ── API METHOD ENFORCEMENT (Reject GET on POST-only API endpoints) ──
