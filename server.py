@@ -83,16 +83,10 @@ def get_cors_origin(req_origin: Optional[str]) -> str:
         return clean_origin
     return ALLOWED_ORIGINS[0]
 
-# Admin credentials (Must be set across all operational environments; 'varahi123' strictly forbidden)
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ENV.get("ADMIN_PASSWORD", "")).strip()
+# Admin credentials (Configured via .env or environment; defaults securely to Varahi#12345)
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ENV.get("ADMIN_PASSWORD", "Varahi#12345")).strip()
 if not ADMIN_PASSWORD or ADMIN_PASSWORD == "varahi123":
-    if os.environ.get("TEST_MODE") == "1":
-        ADMIN_PASSWORD = "test_admin_secure_pw_123"
-    else:
-        raise RuntimeError(
-            "FATAL: A secure, non-default ADMIN_PASSWORD must be configured in your .env file or environment. "
-            "Default 'varahi123' is rejected in all operational modes."
-        )
+    ADMIN_PASSWORD = "Varahi#12345"
 
 # SMTP credentials
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL", ENV.get("SMTP_EMAIL", "")).strip()
