@@ -61,7 +61,8 @@ ENV = load_env()
 
 # Environment settings
 APP_ENV = os.environ.get("APP_ENV", ENV.get("APP_ENV", "development")).strip().lower()
-PORT = int(os.environ.get("PORT", ENV.get("PORT", 8000)))
+_raw_port = str(os.environ.get("PORT") or ENV.get("PORT") or "8000").strip()
+PORT = int(_raw_port) if _raw_port.isdigit() else 8000
 
 # CORS Origin Allowlist Configuration
 ALLOWED_ORIGIN_CONFIG = os.environ.get("ALLOWED_ORIGIN", ENV.get("ALLOWED_ORIGIN", "")).strip()
