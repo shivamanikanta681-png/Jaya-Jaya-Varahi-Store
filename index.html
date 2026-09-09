@@ -555,50 +555,60 @@
 
                 <!-- Right Authentication Flow Panel -->
                 <div class="digits-auth-panel">
-                    <!-- Step 1: Mobile Number Entry (Primary Auth) -->
-                    <div id="digits-step-phone" class="digits-step-view active">
+                    <!-- Customer Authentication Tabs: Sign In / Create Account -->
+                    <div class="auth-tabs-nav" id="customer-auth-tabs">
+                        <button type="button" class="auth-tab-btn active" id="tab-btn-signin" onclick="window.shopApp?.switchAuthTab('signin');">
+                            <i class='bx bx-log-in'></i>
+                            <span>Sign In</span>
+                        </button>
+                        <button type="button" class="auth-tab-btn" id="tab-btn-signup" onclick="window.shopApp?.switchAuthTab('signup');">
+                            <i class='bx bx-user-plus'></i>
+                            <span>Create Account</span>
+                        </button>
+                    </div>
+
+                    <!-- Panel 1: Sign In with Email & Password -->
+                    <div id="auth-view-signin" class="digits-step-view active">
                         <div class="digits-view-header">
-                            <h2 class="digits-title">Login / Sign Up</h2>
-                            <p class="digits-sub">Enter your mobile number to sign in or register instantly.</p>
+                            <h2 class="digits-title">Welcome Back! 👋</h2>
+                            <p class="digits-sub">Enter your email and password to access your account.</p>
                         </div>
 
-                        <form id="digits-phone-form" onsubmit="event.preventDefault(); window.shopApp?.handleSendMobileOtp();">
+                        <form id="email-signin-form" onsubmit="event.preventDefault(); window.shopApp?.handleEmailSignInSubmit();">
                             <div class="digits-form-group">
-                                <label for="mobile-otp-phone-input" class="digits-label">Mobile Number</label>
-                                <div class="digits-phone-input-wrap">
-                                    <div class="digits-country-badge">
-                                        <span class="digits-flag">🇮🇳</span>
-                                        <span class="digits-dial-code">+91</span>
-                                    </div>
-                                    <input type="tel" id="mobile-otp-phone-input" class="digits-phone-input" placeholder="Enter mobile number" maxlength="14" inputmode="numeric" autocomplete="tel" required autofocus>
+                                <label for="email-signin-input" class="digits-label">Email Address</label>
+                                <div class="digits-input-wrapper">
+                                    <i class='bx bx-envelope prefix-icon'></i>
+                                    <input type="email" id="email-signin-input" class="digits-text-input" placeholder="name@example.com" autocomplete="email" required autofocus>
                                 </div>
-                                <div class="digits-field-hint">Indian 10-digit mobile number starting with 6, 7, 8, or 9</div>
                             </div>
 
-                            <div id="digits-phone-error" class="digits-error-msg hidden" role="alert"></div>
+                            <div class="digits-form-group">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                    <label for="password-signin-input" class="digits-label" style="margin:0;">Password</label>
+                                    <a href="#" onclick="window.shopApp?.switchAuthTab('forgot'); return false;" class="digits-link-sm" style="font-size:12.5px; color:#b45309; text-decoration:none; font-weight:600;">Forgot Password?</a>
+                                </div>
+                                <div class="digits-input-wrapper">
+                                    <i class='bx bx-lock-alt prefix-icon'></i>
+                                    <input type="password" id="password-signin-input" class="digits-text-input" placeholder="Enter your password" autocomplete="current-password" required>
+                                </div>
+                            </div>
 
-                            <button type="submit" id="btn-send-mobile-otp" class="digits-submit-btn">
-                                <span>Send OTP</span>
-                                <i class='bx bx-send'></i>
+                            <div id="email-signin-error" class="digits-error-msg hidden" role="alert"></div>
+
+                            <button type="submit" id="btn-email-signin" class="digits-submit-btn">
+                                <span>Sign In</span>
+                                <i class='bx bx-arrow-to-right'></i>
                             </button>
-                            <div id="recaptcha-container"></div>
                         </form>
 
                         <div class="digits-security-badge">
                             <i class='bx bx-shield-check'></i>
-                            <span>100% Secure • Single-use SMS OTP</span>
+                            <span>100% Free & Secure Firebase Authentication</span>
                         </div>
 
                         <div class="digits-divider">
                             <span>or continue with</span>
-                        </div>
-
-                        <!-- Secondary Option: Password Login -->
-                        <div class="digits-alt-options">
-                            <button type="button" id="btn-show-password-login" class="digits-alt-link-btn" onclick="window.shopApp?.switchDigitsStep('password');">
-                                <i class='bx bx-lock-alt'></i>
-                                <span>Login with Password instead</span>
-                            </button>
                         </div>
 
                         <!-- Social Platforms -->
@@ -639,127 +649,91 @@
                         </div>
                     </div>
 
-                    <!-- Step 2: Verify OTP View -->
-                    <div id="digits-step-verify" class="digits-step-view hidden">
+                    <!-- Panel 2: Create Account with Email & Password -->
+                    <div id="auth-view-signup" class="digits-step-view hidden">
                         <div class="digits-view-header">
-                            <h2 class="digits-title">Verify OTP</h2>
-                            <p class="digits-sub">
-                                OTP sent to <strong id="digits-masked-phone">+91 XXXXX XXXXX</strong>
-                            </p>
+                            <h2 class="digits-title">Create Account 🌟</h2>
+                            <p class="digits-sub">Sign up for order tracking, express delivery & member discounts.</p>
                         </div>
 
-                        <form id="digits-verify-form" onsubmit="event.preventDefault(); window.shopApp?.handleVerifyMobileOtp();">
+                        <form id="email-signup-form" onsubmit="event.preventDefault(); window.shopApp?.handleEmailSignUpSubmit();">
                             <div class="digits-form-group">
-                                <label class="digits-label">Enter 6-Digit OTP</label>
-                                <div class="digits-otp-grid" id="digits-otp-grid">
-                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="0" autocomplete="one-time-code">
-                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="1">
-                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="2">
-                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="3">
-                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="4">
-                                    <input type="text" class="digits-otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-idx="5">
-                                </div>
-                            </div>
-
-                            <div id="digits-verify-error" class="digits-error-msg hidden" role="alert"></div>
-
-                            <button type="submit" id="btn-verify-mobile-otp" class="digits-submit-btn">
-                                <span>Verify OTP</span>
-                                <i class='bx bx-check-shield'></i>
-                            </button>
-                        </form>
-
-                        <div class="digits-resend-container">
-                            <span id="digits-countdown-wrap" class="digits-countdown-text">
-                                Resend OTP in <strong id="digits-resend-timer">30</strong> seconds
-                            </span>
-                            <button type="button" id="btn-resend-mobile-otp" class="digits-resend-btn hidden" onclick="window.shopApp?.handleResendMobileOtp();">
-                                <i class='bx bx-refresh'></i> Resend OTP
-                            </button>
-                        </div>
-
-                        <div class="digits-change-number-wrap">
-                            <button type="button" id="btn-change-mobile" class="digits-text-link-btn" onclick="window.shopApp?.switchDigitsStep('phone');">
-                                <i class='bx bx-edit-alt'></i> Change mobile number
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Step 3: New Customer Profile Completion View -->
-                    <div id="digits-step-profile" class="digits-step-view hidden">
-                        <div class="digits-view-header">
-                            <h2 class="digits-title">Almost Done! 🎉</h2>
-                            <p class="digits-sub">Please enter your name to complete your account.</p>
-                        </div>
-
-                        <form id="digits-profile-form" onsubmit="event.preventDefault(); window.shopApp?.handleCompleteProfile();">
-                            <div class="digits-form-group">
-                                <label for="digits-new-name" class="digits-label">Your Full Name *</label>
+                                <label for="signup-name-input" class="digits-label">Full Name *</label>
                                 <div class="digits-input-wrapper">
                                     <i class='bx bx-user prefix-icon'></i>
-                                    <input type="text" id="digits-new-name" class="digits-text-input" placeholder="e.g. Ramesh Kumar" required autofocus>
+                                    <input type="text" id="signup-name-input" class="digits-text-input" placeholder="e.g. Ramesh Kumar" required>
                                 </div>
                             </div>
 
                             <div class="digits-form-group">
-                                <label for="digits-new-email" class="digits-label">Email Address (Optional)</label>
+                                <label for="signup-email-input" class="digits-label">Email Address *</label>
                                 <div class="digits-input-wrapper">
                                     <i class='bx bx-envelope prefix-icon'></i>
-                                    <input type="email" id="digits-new-email" class="digits-text-input" placeholder="e.g. ramesh@example.com">
+                                    <input type="email" id="signup-email-input" class="digits-text-input" placeholder="name@example.com" autocomplete="email" required>
                                 </div>
-                                <div class="digits-field-hint">Used for sending order confirmation receipts & tracking updates.</div>
                             </div>
 
-                            <div id="digits-profile-error" class="digits-error-msg hidden" role="alert"></div>
+                            <div class="digits-form-group">
+                                <label for="signup-password-input" class="digits-label">Password *</label>
+                                <div class="digits-input-wrapper">
+                                    <i class='bx bx-lock-alt prefix-icon'></i>
+                                    <input type="password" id="signup-password-input" class="digits-text-input" placeholder="At least 6 characters" minlength="6" autocomplete="new-password" required>
+                                </div>
+                            </div>
 
-                            <button type="submit" id="btn-complete-profile" class="digits-submit-btn">
-                                <span>Complete Registration & Sign In</span>
+                            <div class="digits-form-group">
+                                <label for="signup-phone-input" class="digits-label">Mobile Number (Optional for Delivery)</label>
+                                <div class="digits-input-wrapper">
+                                    <i class='bx bx-phone prefix-icon'></i>
+                                    <input type="tel" id="signup-phone-input" class="digits-text-input" placeholder="e.g. 9876543210" maxlength="14">
+                                </div>
+                            </div>
+
+                            <div id="email-signup-error" class="digits-error-msg hidden" role="alert"></div>
+
+                            <button type="submit" id="btn-email-signup" class="digits-submit-btn">
+                                <span>Create Account & Sign In</span>
                                 <i class='bx bx-check-circle'></i>
                             </button>
                         </form>
+
+                        <div class="digits-security-badge">
+                            <i class='bx bx-shield-check'></i>
+                            <span>100% Free & Secure Firebase Authentication</span>
+                        </div>
                     </div>
 
-                    <!-- Step 4: Password Login with Mandatory 2FA OTP -->
-                    <div id="digits-step-password" class="digits-step-view hidden">
+                    <!-- Panel 3: Forgot Password (Firebase Email Reset) -->
+                    <div id="auth-view-forgot" class="digits-step-view hidden">
                         <div class="digits-view-header">
-                            <h2 class="digits-title">Login with Password</h2>
-                            <p class="digits-sub">Enter your credentials. A secure OTP will be dispatched to your registered number/email to verify.</p>
+                            <h2 class="digits-title">Reset Password 🔒</h2>
+                            <p class="digits-sub">Enter your email address. Firebase will send you a secure password reset link.</p>
                         </div>
 
-                        <form id="digits-password-form" onsubmit="event.preventDefault(); window.shopApp?.handlePasswordLoginSubmit();">
+                        <form id="email-forgot-form" onsubmit="event.preventDefault(); window.shopApp?.handleForgotPasswordSubmit();">
                             <div class="digits-form-group">
-                                <label for="pwd-login-identifier" class="digits-label">Mobile Number or Email</label>
+                                <label for="forgot-email-input" class="digits-label">Email Address</label>
                                 <div class="digits-input-wrapper">
-                                    <i class='bx bx-user-pin prefix-icon'></i>
-                                    <input type="text" id="pwd-login-identifier" class="digits-text-input" placeholder="e.g. 9876543210 or email" required>
+                                    <i class='bx bx-envelope prefix-icon'></i>
+                                    <input type="email" id="forgot-email-input" class="digits-text-input" placeholder="name@example.com" autocomplete="email" required>
                                 </div>
                             </div>
 
-                            <div class="digits-form-group">
-                                <label for="pwd-login-password" class="digits-label">Password</label>
-                                <div class="digits-input-wrapper">
-                                    <i class='bx bx-lock-alt prefix-icon'></i>
-                                    <input type="password" id="pwd-login-password" class="digits-text-input" placeholder="Enter your password" required>
-                                </div>
-                                <div class="digits-pwd-extra-row">
-                                    <a href="#" onclick="window.shopApp?.openEmailOTPModal('reset'); return false;" class="digits-link-sm">Forgot Password?</a>
-                                </div>
-                            </div>
+                            <div id="email-forgot-error" class="digits-error-msg hidden" role="alert"></div>
 
-                            <div id="digits-password-error" class="digits-error-msg hidden" role="alert"></div>
-
-                            <button type="submit" id="btn-submit-password-login" class="digits-submit-btn">
-                                <span>Verify & Send OTP</span>
-                                <i class='bx bx-arrow-to-right'></i>
+                            <button type="submit" id="btn-send-reset-link" class="digits-submit-btn">
+                                <span>Send Password Reset Link</span>
+                                <i class='bx bx-mail-send'></i>
                             </button>
                         </form>
 
-                        <div class="digits-back-wrap">
-                            <button type="button" id="btn-back-to-mobile-otp" class="digits-text-link-btn" onclick="window.shopApp?.switchDigitsStep('phone');">
-                                <i class='bx bx-mobile-alt'></i> Return to Mobile OTP Login
+                        <div class="digits-back-wrap" style="margin-top: 18px; text-align: center;">
+                            <button type="button" class="digits-text-link-btn" onclick="window.shopApp?.switchAuthTab('signin');">
+                                <i class='bx bx-arrow-back'></i> Back to Sign In
                             </button>
                         </div>
                     </div>
+                    <div id="recaptcha-container"></div>
                 </div>
             </div>
         </div>

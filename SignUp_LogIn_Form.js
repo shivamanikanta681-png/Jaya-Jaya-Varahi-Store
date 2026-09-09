@@ -261,7 +261,10 @@ class ShopApp {
     // Automatically display login form when website is opened
     if (this.loginModal && (!this.currentUser || !this.currentUser.name)) {
       setTimeout(() => {
-        if (this.loginModal) this.loginModal.classList.remove('hidden');
+        if (this.loginModal) {
+          this.switchAuthTab('signin');
+          this.loginModal.classList.remove('hidden');
+        }
       }, 400);
     }
   }
@@ -375,23 +378,28 @@ class ShopApp {
     this.openLoginBtn = document.getElementById('open-login-btn');
     this.closeLoginModal = document.getElementById('close-login-modal');
 
-    // Native Digits-Style Mobile OTP Authentication Elements
-    this.digitsStepPhone = document.getElementById('digits-step-phone');
-    this.digitsStepVerify = document.getElementById('digits-step-verify');
-    this.digitsStepProfile = document.getElementById('digits-step-profile');
-    this.digitsStepPassword = document.getElementById('digits-step-password');
-    this.mobileOtpPhoneInput = document.getElementById('mobile-otp-phone-input');
-    this.btnSendMobileOtp = document.getElementById('btn-send-mobile-otp');
-    this.btnVerifyMobileOtp = document.getElementById('btn-verify-mobile-otp');
-    this.btnResendMobileOtp = document.getElementById('btn-resend-mobile-otp');
-    this.btnChangeMobile = document.getElementById('btn-change-mobile');
-    this.digitsMaskedPhone = document.getElementById('digits-masked-phone');
-    this.digitsResendTimer = document.getElementById('digits-resend-timer');
-    this.digitsCountdownWrap = document.getElementById('digits-countdown-wrap');
-    this.digitsPhoneError = document.getElementById('digits-phone-error');
-    this.digitsVerifyError = document.getElementById('digits-verify-error');
-    this.digitsProfileError = document.getElementById('digits-profile-error');
-    this.digitsPasswordError = document.getElementById('digits-password-error');
+    // Customer Authentication Elements (Firebase Email & Password)
+    this.tabBtnSignIn = document.getElementById('tab-btn-signin');
+    this.tabBtnSignUp = document.getElementById('tab-btn-signup');
+    this.authViewSignIn = document.getElementById('auth-view-signin');
+    this.authViewSignUp = document.getElementById('auth-view-signup');
+    this.authViewForgot = document.getElementById('auth-view-forgot');
+    this.emailSignInForm = document.getElementById('email-signin-form');
+    this.emailSignUpForm = document.getElementById('email-signup-form');
+    this.emailForgotForm = document.getElementById('email-forgot-form');
+    this.emailSignInInput = document.getElementById('email-signin-input');
+    this.passwordSignInInput = document.getElementById('password-signin-input');
+    this.emailSignInError = document.getElementById('email-signin-error');
+    this.btnEmailSignIn = document.getElementById('btn-email-signin');
+    this.signupNameInput = document.getElementById('signup-name-input');
+    this.signupEmailInput = document.getElementById('signup-email-input');
+    this.signupPasswordInput = document.getElementById('signup-password-input');
+    this.signupPhoneInput = document.getElementById('signup-phone-input');
+    this.emailSignUpError = document.getElementById('email-signup-error');
+    this.btnEmailSignUp = document.getElementById('btn-email-signup');
+    this.forgotEmailInput = document.getElementById('forgot-email-input');
+    this.emailForgotError = document.getElementById('email-forgot-error');
+    this.btnSendResetLink = document.getElementById('btn-send-reset-link');
     this.pendingMobileOtp = null;
     this.pendingRegistration = null;
 
@@ -751,7 +759,7 @@ class ShopApp {
       });
     }
 
-    // 15. Native Digits-Style Mobile OTP Authentication Controls
+    // 15. Customer Authentication Controls (Firebase Email & Password)
     if (this.openLoginBtn) {
       this.openLoginBtn.addEventListener('click', (e) => {
         if (e.target.closest('#header-logout-btn')) return;
@@ -759,8 +767,7 @@ class ShopApp {
         if (this.currentUser && this.currentUser.name) {
           this.openAccountModal();
         } else {
-          this.switchDigitsStep('phone');
-          if (this.loginModal) this.loginModal.classList.remove('hidden');
+          this.openLoginModal('signin');
         }
       });
     }
@@ -772,7 +779,7 @@ class ShopApp {
     }
 
     if (this.loginModal) {
-      this.initDigitsMobileAuth();
+      this.initEmailAuth();
 
       this.loginModal.addEventListener('click', (e) => {
         const socialBtn = e.target.closest('.social-login-btn');
@@ -3183,8 +3190,9 @@ class ShopApp {
   }
 
   initFirebaseAuthStateListener() {
-    if (window.firebasePhoneAuthService && typeof window.firebasePhoneAuthService.getAuth === 'function') {
-      const auth = window.firebasePhoneAuthService.getAuth();
+    const authService = window.firebaseEmailAuthService || window.firebasePhoneAuthService;
+    if (authService && typeof authService.getAuth === 'function') {
+      const auth = authService.getAuth();
       if (auth && typeof auth.onAuthStateChanged === 'function') {
         auth.onAuthStateChanged(async (fbUser) => {
           if (fbUser) {
@@ -3195,18 +3203,20 @@ class ShopApp {
               if (raw) cached = JSON.parse(raw);
             } catch (_e) {}
 
-            if (cached && (cached.firebase_uid === fbUser.uid || cached.phone_normalized === fbUser.phoneNumber || cached.phone === fbUser.phoneNumber)) {
+            if (cached && (cached.firebase_uid === fbUser.uid || (cached.email && cached.email.toLowerCase() === (fbUser.email || '').toLowerCase()) || (cached.phone_normalized && cached.phone_normalized === fbUser.phoneNumber))) {
               this.currentUser = cached;
             } else {
-              const phone = fbUser.phoneNumber || '';
+              const phone = fbUser.phoneNumber || (cached && cached.phone) || '';
+              const email = fbUser.email || (cached && cached.email) || '';
+              const displayName = fbUser.displayName || (cached && cached.name) || (email ? email.split('@')[0] : 'Customer');
               this.currentUser = {
                 id: fbUser.uid,
                 firebase_uid: fbUser.uid,
                 phone: phone,
                 phone_normalized: phone,
-                name: (cached && cached.name) || (phone ? phone.slice(-4) : 'Customer'),
-                email: fbUser.email || (cached && cached.email) || null,
-                platform: 'Firebase Phone Auth'
+                name: displayName,
+                email: email || null,
+                platform: email ? 'Email Account' : 'Firebase Auth'
               };
               try {
                 localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
@@ -3237,11 +3247,18 @@ class ShopApp {
       sessionStorage.removeItem('jjv_session_token');
     } catch (_e) {}
 
+    if (window.firebaseEmailAuthService) {
+      try {
+        await window.firebaseEmailAuthService.signOut();
+      } catch (err) {
+        console.warn('[Firebase Email SignOut Note]', err);
+      }
+    }
     if (window.firebasePhoneAuthService) {
       try {
         await window.firebasePhoneAuthService.signOut();
       } catch (err) {
-        console.warn('[Firebase SignOut Note]', err);
+        console.warn('[Firebase Phone SignOut Note]', err);
       }
     }
     this.updateUserAuthUI();
@@ -3868,305 +3885,6 @@ class ShopApp {
     return dict.default || KB.en.default;
   }
 
-
-
-  // ── THEME ENGINE (Light / Dark Mode) ──
-  initTheme() {
-    this.currentTheme = localStorage.getItem('jjv_theme') || 'light';
-    this.toggleThemeBtn = document.getElementById('toggle-theme-btn');
-    this.themeIcon = document.getElementById('theme-icon');
-    this.themeTooltip = document.getElementById('theme-tooltip');
-
-    this.applyTheme(this.currentTheme, false);
-
-    if (this.toggleThemeBtn) {
-      this.toggleThemeBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const nextTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
-        this.applyTheme(nextTheme, true);
-        if (this.soundEnabled) this.playSound('toggle');
-      });
-    }
-  }
-
-  applyTheme(theme, notify = false) {
-    this.currentTheme = theme;
-    try {
-      localStorage.setItem('jjv_theme', theme);
-    } catch(e) {}
-
-    if (theme === 'dark') {
-      document.body.classList.add('dark-mode');
-      if (this.themeIcon) this.themeIcon.className = 'bx bxs-sun';
-      if (this.themeTooltip) this.themeTooltip.textContent = 'Light Mode';
-      if (this.toggleThemeBtn) {
-        this.toggleThemeBtn.title = 'Switch to Light Mode';
-        this.toggleThemeBtn.classList.add('theme-dark-active');
-      }
-      if (notify) this.showToast('🌙 Dark mode activated', 'info');
-    } else {
-      document.body.classList.remove('dark-mode');
-      if (this.themeIcon) this.themeIcon.className = 'bx bxs-moon';
-      if (this.themeTooltip) this.themeTooltip.textContent = 'Dark Mode';
-      if (this.toggleThemeBtn) {
-        this.toggleThemeBtn.title = 'Switch to Dark Mode';
-        this.toggleThemeBtn.classList.remove('theme-dark-active');
-      }
-      if (notify) this.showToast('☀️ Light mode activated', 'info');
-    }
-  }
-
-  // ── SOUND EFFECTS AUDIO ENGINE (Web Audio API) ──
-  initAudio() {
-    this.soundEnabled = localStorage.getItem('jjv_sound_enabled') !== 'false';
-    this.audioCtx = null;
-    this.toggleSoundBtn = document.getElementById('toggle-sound-btn');
-    this.soundIcon = document.getElementById('sound-icon');
-    this.soundText = document.getElementById('sound-text');
-
-    if (this.toggleSoundBtn) {
-      this.updateSoundBtnUI();
-      this.toggleSoundBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.soundEnabled = !this.soundEnabled;
-        localStorage.setItem('jjv_sound_enabled', this.soundEnabled ? 'true' : 'false');
-        this.updateSoundBtnUI();
-        if (this.soundEnabled) {
-          this.playSound('toggle');
-          this.showToast('🔊 Click sound effects enabled!', 'info');
-        } else {
-          this.showToast('🔇 Click sound effects muted.', 'info');
-        }
-      });
-    }
-
-    // Unlock AudioContext on first user interaction
-    const unlockAudio = () => {
-      try {
-        if (!this.audioCtx) {
-          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-          if (AudioContextClass) this.audioCtx = new AudioContextClass();
-        }
-        if (this.audioCtx && this.audioCtx.state === 'suspended') {
-          this.audioCtx.resume();
-        }
-      } catch (err) {}
-    };
-
-    ['click', 'touchstart', 'keydown'].forEach(evt => {
-      window.addEventListener(evt, unlockAudio, { once: true, capture: true });
-    });
-
-    // Global Click Sound Effects Listener (Capture phase guarantees sounds on any interactive click)
-    document.addEventListener('click', (e) => {
-      if (!this.soundEnabled) return;
-      unlockAudio();
-
-      const interactive = e.target.closest('button, a, input[type="radio"], input[type="checkbox"], select, .nav-btn, .quick-pill, .wishlist-heart-btn, .social-login-btn, .device-account-item, .product-card, .chat-add-btn, .modal-close-btn, .chatbot-close');
-      if (!interactive) return;
-
-      if (interactive.classList.contains('add-cart-btn') || interactive.classList.contains('chat-add-btn') || interactive.classList.contains('add-to-cart-btn')) {
-        this.playSound('cart');
-      } else if (interactive.closest('.wishlist-heart-btn') || interactive.id === 'catalog-wishlist-btn') {
-        this.playSound('wishlist');
-      } else if (interactive.classList.contains('social-login-btn') || interactive.classList.contains('device-account-item')) {
-        this.playSound('social');
-      } else if (interactive.classList.contains('modal-close-btn') || interactive.classList.contains('chatbot-close')) {
-        this.playSound('close');
-      } else if (interactive.id === 'place-order-btn' || (interactive.tagName === 'BUTTON' && interactive.type === 'submit')) {
-        this.playSound('success');
-      } else if (interactive.id !== 'toggle-sound-btn') {
-        this.playSound('click');
-      }
-    }, true);
-  }
-
-  updateSoundBtnUI() {
-    if (!this.soundIcon) return;
-    const tooltip = document.getElementById('sound-tooltip');
-    if (this.soundEnabled) {
-      this.soundIcon.className = 'bx bxs-volume-full';
-      if (this.soundText) this.soundText.textContent = 'Sound ON';
-      if (tooltip) tooltip.textContent = 'Sound: ON';
-      if (this.toggleSoundBtn) {
-        this.toggleSoundBtn.classList.remove('sound-muted');
-        this.toggleSoundBtn.title = 'Sound Effects: ON (Click to Mute)';
-      }
-    } else {
-      this.soundIcon.className = 'bx bxs-volume-mute';
-      if (this.soundText) this.soundText.textContent = 'Sound OFF';
-      if (tooltip) tooltip.textContent = 'Sound: OFF';
-      if (this.toggleSoundBtn) {
-        this.toggleSoundBtn.classList.add('sound-muted');
-        this.toggleSoundBtn.title = 'Sound Effects: OFF (Click to Unmute)';
-      }
-    }
-  }
-
-  playSound(type = 'click') {
-    if (!this.soundEnabled) return;
-    try {
-      if (!this.audioCtx) {
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (AudioContextClass) this.audioCtx = new AudioContextClass();
-      }
-      if (this.audioCtx && this.audioCtx.state === 'suspended') {
-        this.audioCtx.resume();
-      }
-      if (!this.audioCtx) return;
-
-      const now = this.audioCtx.currentTime;
-
-      if (type === 'click') {
-        // Subtle, crisp wooden modern UI tap
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(580, now);
-        osc.frequency.exponentialRampToValueAtTime(280, now + 0.04);
-        gain.gain.setValueAtTime(0.08, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        osc.start(now);
-        osc.stop(now + 0.05);
-      } else if (type === 'cart') {
-        // Rewarding upbeat 2-tone melodic chime (C5 -> G5)
-        const osc1 = this.audioCtx.createOscillator();
-        const gain1 = this.audioCtx.createGain();
-        osc1.type = 'triangle';
-        osc1.frequency.setValueAtTime(523.25, now);
-        gain1.gain.setValueAtTime(0.12, now);
-        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-        osc1.connect(gain1);
-        gain1.connect(this.audioCtx.destination);
-        osc1.start(now);
-        osc1.stop(now + 0.13);
-
-        const osc2 = this.audioCtx.createOscillator();
-        const gain2 = this.audioCtx.createGain();
-        osc2.type = 'triangle';
-        osc2.frequency.setValueAtTime(783.99, now + 0.08);
-        gain2.gain.setValueAtTime(0.15, now + 0.08);
-        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
-        osc2.connect(gain2);
-        gain2.connect(this.audioCtx.destination);
-        osc2.start(now + 0.08);
-        osc2.stop(now + 0.3);
-      } else if (type === 'wishlist') {
-        // Sweet pop sweep for love/wishlist
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(440, now);
-        osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
-        gain.gain.setValueAtTime(0.12, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        osc.start(now);
-        osc.stop(now + 0.15);
-      } else if (type === 'social') {
-        // Rich resonant pop tone
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(520, now);
-        osc.frequency.exponentialRampToValueAtTime(780, now + 0.09);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        osc.start(now);
-        osc.stop(now + 0.11);
-      } else if (type === 'success') {
-        // Celebratory 4-note major fanfare
-        const notes = [523.25, 659.25, 783.99, 1046.50];
-        notes.forEach((freq, idx) => {
-          const osc = this.audioCtx.createOscillator();
-          const gain = this.audioCtx.createGain();
-          const t = now + (idx * 0.07);
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, t);
-          gain.gain.setValueAtTime(0.12, t);
-          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-          osc.connect(gain);
-          gain.connect(this.audioCtx.destination);
-          osc.start(t);
-          osc.stop(t + 0.28);
-        });
-      } else if (type === 'close') {
-        // Soft descending dismiss tone
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(420, now);
-        osc.frequency.exponentialRampToValueAtTime(220, now + 0.06);
-        gain.gain.setValueAtTime(0.08, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        osc.start(now);
-        osc.stop(now + 0.07);
-      } else if (type === 'toggle') {
-        // Quick high chime for sound toggle
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(750, now);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        osc.start(now);
-        osc.stop(now + 0.09);
-      } else if (type === 'chat') {
-        // Gentle bubble ping for AI Chatbot
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(987.77, now);
-        osc.frequency.exponentialRampToValueAtTime(1318.51, now + 0.08);
-        gain.gain.setValueAtTime(0.08, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        osc.start(now);
-        osc.stop(now + 0.13);
-      }
-    } catch (e) {}
-  }
-
-  showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    
-    const iconMap = {
-      success: 'bx-check-circle',
-      error: 'bx-error-circle',
-      info: 'bx-info-circle'
-    };
-
-    toast.innerHTML = `<i class='bx ${iconMap[type] || 'bx-info-circle'}'></i> ${message}`;
-    container.appendChild(toast);
-
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateX(100%)';
-      toast.style.transition = 'all 0.3s ease';
-      setTimeout(() => toast.remove(), 300);
-    }, 3500);
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  // ── NATIVE DIGITS-STYLE MOBILE SMS OTP AUTHENTICATION ENGINE ─────────
-  // ══════════════════════════════════════════════════════════════════════
-
   normalizeIndianPhone(raw) {
     if (!raw || typeof raw !== 'string') return null;
     let digits = raw.replace(/[\s\-().]/g, '');
@@ -4182,380 +3900,321 @@ class ShopApp {
     return `+91${digits}`;
   }
 
-  initDigitsMobileAuth() {
-    // 1. Phone input event: filter non-numeric characters and format cleanly
-    if (this.mobileOtpPhoneInput) {
-      this.mobileOtpPhoneInput.addEventListener('input', (e) => {
-        let val = e.target.value;
-        val = val.replace(/[^\d+]/g, '');
-        if (val.startsWith('+91')) {
-          const rest = val.slice(3).replace(/\D/g, '').slice(0, 10);
-          e.target.value = '+91 ' + rest;
-        } else {
-          val = val.replace(/\D/g, '').slice(0, 10);
-          e.target.value = val;
-        }
-        if (this.digitsPhoneError) this.digitsPhoneError.classList.add('hidden');
-      });
-
-      this.mobileOtpPhoneInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          this.handleSendMobileOtp();
-        }
-      });
-    }
-
-    // 2. 6-Digit OTP inputs auto-advance, backspace navigation, paste handler
-    const otpGrid = document.getElementById('digits-otp-grid');
-    if (otpGrid) {
-      const cells = Array.from(otpGrid.querySelectorAll('.digits-otp-cell'));
-
-      cells.forEach((cell, idx) => {
-        cell.addEventListener('input', (e) => {
-          const val = e.target.value.replace(/\D/g, '');
-          e.target.value = val.slice(-1);
-          if (this.digitsVerifyError) this.digitsVerifyError.classList.add('hidden');
-
-          if (val && idx < cells.length - 1) {
-            cells[idx + 1].focus();
-            cells[idx + 1].select();
-          } else if (val && idx === cells.length - 1) {
-            const allFilled = cells.every(c => c.value.trim().length === 1);
-            if (allFilled) {
-              this.handleVerifyMobileOtp();
-            }
-          }
-        });
-
-        cell.addEventListener('keydown', (e) => {
-          if (e.key === 'Backspace') {
-            if (!cell.value && idx > 0) {
-              cells[idx - 1].focus();
-              cells[idx - 1].value = '';
-              e.preventDefault();
-            }
-          } else if (e.key === 'ArrowLeft' && idx > 0) {
-            cells[idx - 1].focus();
-            e.preventDefault();
-          } else if (e.key === 'ArrowRight' && idx < cells.length - 1) {
-            cells[idx + 1].focus();
-            e.preventDefault();
-          } else if (e.key === 'Enter') {
-            e.preventDefault();
-            this.handleVerifyMobileOtp();
-          }
-        });
-
-        cell.addEventListener('paste', (e) => {
-          e.preventDefault();
-          const pastedData = (e.clipboardData || window.clipboardData).getData('text');
-          const digits = pastedData.replace(/\D/g, '').slice(0, 6);
-          if (!digits) return;
-
-          digits.split('').forEach((d, i) => {
-            if (cells[i]) cells[i].value = d;
-          });
-
-          const nextIndex = Math.min(digits.length, cells.length - 1);
-          cells[nextIndex].focus();
-          if (digits.length === 6) {
-            this.handleVerifyMobileOtp();
-          }
-        });
-      });
-    }
+  openLoginModal(tab = 'signin') {
+    this.switchAuthTab(tab);
+    if (this.loginModal) this.loginModal.classList.remove('hidden');
   }
 
-  switchDigitsStep(step) {
-    const steps = {
-      phone: this.digitsStepPhone,
-      verify: this.digitsStepVerify,
-      profile: this.digitsStepProfile,
-      password: this.digitsStepPassword
-    };
+  switchAuthTab(tab = 'signin') {
+    const tabBtnSignIn = document.getElementById('tab-btn-signin');
+    const tabBtnSignUp = document.getElementById('tab-btn-signup');
+    const viewSignIn = document.getElementById('auth-view-signin');
+    const viewSignUp = document.getElementById('auth-view-signup');
+    const viewForgot = document.getElementById('auth-view-forgot');
 
-    Object.entries(steps).forEach(([k, el]) => {
-      if (!el) return;
-      if (k === step) {
-        el.classList.remove('hidden');
-        el.classList.add('active');
-      } else {
-        el.classList.add('hidden');
-        el.classList.remove('active');
+    // Clear all error/status messages
+    const errSignIn = document.getElementById('email-signin-error');
+    const errSignUp = document.getElementById('email-signup-error');
+    const errForgot = document.getElementById('email-forgot-error');
+    [errSignIn, errSignUp, errForgot].forEach(err => {
+      if (err) {
+        err.textContent = '';
+        err.classList.add('hidden');
       }
     });
 
-    [this.digitsPhoneError, this.digitsVerifyError, this.digitsProfileError, this.digitsPasswordError].forEach(errEl => {
-      if (errEl) {
-        errEl.textContent = '';
-        errEl.classList.add('hidden');
-      }
-    });
-
-    if (step === 'phone') {
-      setTimeout(() => this.mobileOtpPhoneInput?.focus(), 150);
-    } else if (step === 'verify') {
-      const firstCell = document.querySelector('#digits-otp-grid .digits-otp-cell[data-idx="0"]');
-      setTimeout(() => firstCell?.focus(), 150);
-    } else if (step === 'profile') {
-      setTimeout(() => document.getElementById('digits-new-name')?.focus(), 150);
-    } else if (step === 'password') {
-      setTimeout(() => document.getElementById('pwd-login-identifier')?.focus(), 150);
+    if (tab === 'signin') {
+      tabBtnSignIn?.classList.add('active');
+      tabBtnSignUp?.classList.remove('active');
+      viewSignIn?.classList.remove('hidden');
+      viewSignIn?.classList.add('active');
+      viewSignUp?.classList.add('hidden');
+      viewSignUp?.classList.remove('active');
+      viewForgot?.classList.add('hidden');
+      viewForgot?.classList.remove('active');
+      setTimeout(() => document.getElementById('email-signin-input')?.focus(), 150);
+    } else if (tab === 'signup') {
+      tabBtnSignIn?.classList.remove('active');
+      tabBtnSignUp?.classList.add('active');
+      viewSignIn?.classList.add('hidden');
+      viewSignIn?.classList.remove('active');
+      viewSignUp?.classList.remove('hidden');
+      viewSignUp?.classList.add('active');
+      viewForgot?.classList.add('hidden');
+      viewForgot?.classList.remove('active');
+      setTimeout(() => document.getElementById('signup-name-input')?.focus(), 150);
+    } else if (tab === 'forgot') {
+      tabBtnSignIn?.classList.remove('active');
+      tabBtnSignUp?.classList.remove('active');
+      viewSignIn?.classList.add('hidden');
+      viewSignIn?.classList.remove('active');
+      viewSignUp?.classList.add('hidden');
+      viewSignUp?.classList.remove('active');
+      viewForgot?.classList.remove('hidden');
+      viewForgot?.classList.add('active');
+      setTimeout(() => document.getElementById('forgot-email-input')?.focus(), 150);
     }
   }
 
-  async handleSendMobileOtp() {
-    const raw = this.mobileOtpPhoneInput?.value || '';
-    const phone = this.normalizeIndianPhone(raw);
-
-    if (!phone) {
-      if (this.digitsPhoneError) {
-        this.digitsPhoneError.textContent = '⚠️ Please enter a valid 10-digit Indian mobile number (e.g. 9876543210).';
-        this.digitsPhoneError.classList.remove('hidden');
-      }
-      this.mobileOtpPhoneInput?.focus();
-      return;
-    }
-
-    if (this.digitsPhoneError) this.digitsPhoneError.classList.add('hidden');
-    if (this.btnSendMobileOtp) {
-      this.btnSendMobileOtp.disabled = true;
-      this.btnSendMobileOtp.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Sending OTP...`;
-    }
-
-    try {
-      const masked = phone.slice(0, 3) + ' ' + phone.slice(3, 8) + ' ' + phone.slice(8).replace(/\d/g, '•');
-      const cooldown = 30;
-
-      // STRICT REQUIREMENT: Firebase Phone Authentication ONLY. ZERO fallback to custom server OTP.
-      if (!window.firebasePhoneAuthService || !window.firebasePhoneAuthService.isConfigured()) {
-        throw new Error('Firebase Authentication is not configured or available. Ensure Firebase scripts are loaded.');
-      }
-
-      const verifier = window.firebasePhoneAuthService.initRecaptcha('recaptcha-container');
-      const confirmationResult = await window.firebasePhoneAuthService.sendPhoneOtp(phone, verifier);
-      this.firebaseConfirmationResult = confirmationResult;
-
-      this.showToast(`📩 OTP dispatched via Firebase Phone Auth to ${masked}!`, 'success');
-
-      if (this.pendingMobileOtp && this.pendingMobileOtp.timerId) {
-        clearInterval(this.pendingMobileOtp.timerId);
-      }
-
-      this.pendingMobileOtp = {
-        phone: phone,
-        masked: masked,
-        purpose: 'login',
-        resendCooldown: cooldown,
-        timerId: null
+  initEmailAuth() {
+    // Form submit handlers (support keyboard Enter)
+    if (this.emailSignInForm) {
+      this.emailSignInForm.onsubmit = (e) => {
+        e.preventDefault();
+        this.handleEmailSignInSubmit();
       };
-
-      if (this.digitsMaskedPhone) {
-        this.digitsMaskedPhone.textContent = masked;
-      }
-
-      const cells = document.querySelectorAll('#digits-otp-grid .digits-otp-cell');
-      cells.forEach(c => c.value = '');
-
-      this.startDigitsResendTimer(cooldown);
-      this.switchDigitsStep('verify');
-    } catch (err) {
-      console.warn('[Firebase Send OTP Error]', err);
-      let msg = err.message || 'Error requesting phone verification OTP via Firebase.';
-      if (err.code === 'auth/invalid-phone-number') {
-        msg = '⚠️ Invalid phone number format for Firebase Phone Authentication.';
-      } else if (err.code === 'auth/too-many-requests') {
-        msg = '⚠️ Too many attempts. Please wait a few minutes before trying again.';
-      } else if (err.code === 'auth/quota-exceeded') {
-        msg = '⚠️ SMS quota exceeded. Use pre-configured Firebase test phone numbers.';
-      } else if (err.code === 'auth/operation-not-allowed' || (err.message && err.message.includes('region enabled'))) {
-        msg = '⚠️ SMS region policy blocked. In Firebase Console > Authentication > Settings > SMS Regions Policy, enable India (+91), or test with a registered Firebase test phone number.';
-      }
-      if (this.digitsPhoneError) {
-        this.digitsPhoneError.textContent = msg;
-        this.digitsPhoneError.classList.remove('hidden');
-      }
-      this.showToast(msg, 'error');
-    } finally {
-      if (this.btnSendMobileOtp) {
-        this.btnSendMobileOtp.disabled = false;
-        this.btnSendMobileOtp.innerHTML = `<span>Send OTP</span> <i class='bx bx-send'></i>`;
-      }
     }
+
+    if (this.emailSignUpForm) {
+      this.emailSignUpForm.onsubmit = (e) => {
+        e.preventDefault();
+        this.handleEmailSignUpSubmit();
+      };
+    }
+
+    if (this.emailForgotForm) {
+      this.emailForgotForm.onsubmit = (e) => {
+        e.preventDefault();
+        this.handleForgotPasswordSubmit();
+      };
+    }
+
+    // Input error clear listeners
+    ['email-signin-input', 'password-signin-input'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', () => {
+        const err = document.getElementById('email-signin-error');
+        if (err) err.classList.add('hidden');
+      });
+    });
+
+    ['signup-name-input', 'signup-email-input', 'signup-password-input', 'signup-phone-input'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', () => {
+        const err = document.getElementById('email-signup-error');
+        if (err) err.classList.add('hidden');
+      });
+    });
+
+    document.getElementById('forgot-email-input')?.addEventListener('input', () => {
+      const err = document.getElementById('email-forgot-error');
+      if (err) err.classList.add('hidden');
+    });
   }
 
-  startDigitsResendTimer(seconds = 30) {
-    if (!this.pendingMobileOtp) return;
-    if (this.pendingMobileOtp.timerId) clearInterval(this.pendingMobileOtp.timerId);
+  async handleEmailSignInSubmit() {
+    const emailInput = document.getElementById('email-signin-input');
+    const pwdInput = document.getElementById('password-signin-input');
+    const errEl = document.getElementById('email-signin-error');
+    const btn = document.getElementById('btn-email-signin');
 
-    let remaining = seconds;
-    if (this.digitsResendTimer) this.digitsResendTimer.textContent = remaining;
-    if (this.digitsCountdownWrap) this.digitsCountdownWrap.classList.remove('hidden');
-    if (this.btnResendMobileOtp) this.btnResendMobileOtp.classList.add('hidden');
+    const email = emailInput ? emailInput.value.trim() : '';
+    const password = pwdInput ? pwdInput.value : '';
 
-    this.pendingMobileOtp.timerId = setInterval(() => {
-      remaining--;
-      if (this.digitsResendTimer) this.digitsResendTimer.textContent = remaining;
-      if (remaining <= 0) {
-        clearInterval(this.pendingMobileOtp.timerId);
-        if (this.digitsCountdownWrap) this.digitsCountdownWrap.classList.add('hidden');
-        if (this.btnResendMobileOtp) this.btnResendMobileOtp.classList.remove('hidden');
+    if (!email || !password) {
+      if (errEl) {
+        errEl.textContent = '⚠️ Please enter both your email address and password.';
+        errEl.classList.remove('hidden');
       }
-    }, 1000);
-  }
-
-  async handleResendMobileOtp() {
-    if (!this.pendingMobileOtp || !this.pendingMobileOtp.phone) {
-      this.switchDigitsStep('phone');
       return;
     }
 
-    if (this.btnResendMobileOtp) {
-      this.btnResendMobileOtp.disabled = true;
-      this.btnResendMobileOtp.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Resending...`;
+    if (errEl) errEl.classList.add('hidden');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Signing in...`;
     }
 
     try {
-      const phone = this.pendingMobileOtp.phone;
-
-      // STRICT REQUIREMENT: Firebase Phone Authentication ONLY. ZERO fallback to custom server OTP.
-      if (!window.firebasePhoneAuthService || !window.firebasePhoneAuthService.isConfigured()) {
-        throw new Error('Firebase Authentication is unavailable.');
+      if (!window.firebaseEmailAuthService || !window.firebaseEmailAuthService.isConfigured()) {
+        throw new Error('Firebase Authentication is not configured or available.');
       }
 
-      const verifier = window.firebasePhoneAuthService.initRecaptcha('recaptcha-container');
-      const confirmationResult = await window.firebasePhoneAuthService.sendPhoneOtp(phone, verifier);
-      this.firebaseConfirmationResult = confirmationResult;
-
-      this.showToast(`📩 New OTP sent via Firebase Phone Auth to ${this.pendingMobileOtp.masked}!`, 'success');
-
-      const cooldown = 30;
-      this.startDigitsResendTimer(cooldown);
-      const cells = document.querySelectorAll('#digits-otp-grid .digits-otp-cell');
-      cells.forEach(c => c.value = '');
-      cells[0]?.focus();
-    } catch (err) {
-      console.warn('[Firebase Resend OTP Error]', err);
-      let msg = err.message || 'Failed to resend OTP via Firebase.';
-      if (err.code === 'auth/too-many-requests') {
-        msg = '⚠️ Too many attempts. Please try again later.';
-      } else if (err.code === 'auth/operation-not-allowed' || (err.message && err.message.includes('region enabled'))) {
-        msg = '⚠️ SMS region policy blocked. In Firebase Console > Authentication > Settings > SMS Regions Policy, enable India (+91), or test with a registered Firebase test phone number.';
-      }
-      this.showToast(msg, 'error');
-    } finally {
-      if (this.btnResendMobileOtp) {
-        this.btnResendMobileOtp.disabled = false;
-        this.btnResendMobileOtp.innerHTML = `<i class='bx bx-refresh'></i> Resend OTP`;
-      }
-    }
-  }
-
-  async handleVerifyMobileOtp() {
-    if (!this.pendingMobileOtp || !this.pendingMobileOtp.phone) {
-      this.switchDigitsStep('phone');
-      return;
-    }
-
-    const cells = Array.from(document.querySelectorAll('#digits-otp-grid .digits-otp-cell'));
-    const otpCode = cells.map(c => c.value.trim()).join('');
-
-    if (otpCode.length !== 6 || !/^\d{6}$/.test(otpCode)) {
-      if (this.digitsVerifyError) {
-        this.digitsVerifyError.textContent = '⚠️ Please enter all 6 digits of the verification code.';
-        this.digitsVerifyError.classList.remove('hidden');
-      }
-      cells.find(c => !c.value.trim())?.focus();
-      return;
-    }
-
-    if (this.digitsVerifyError) this.digitsVerifyError.classList.add('hidden');
-    if (this.btnVerifyMobileOtp) {
-      this.btnVerifyMobileOtp.disabled = true;
-      this.btnVerifyMobileOtp.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Verifying OTP...`;
-    }
-
-    try {
-      // STRICT REQUIREMENT: Firebase Phone Authentication ONLY. ZERO custom verification fallback.
-      if (!this.firebaseConfirmationResult || typeof this.firebaseConfirmationResult.confirm !== 'function') {
-        throw new Error('No active Firebase phone verification session found. Please request a new OTP.');
-      }
-
-      let userCredential = null;
-      try {
-        userCredential = await this.firebaseConfirmationResult.confirm(otpCode);
-      } catch (firebaseErr) {
-        console.warn('[Firebase Verification Error]', firebaseErr);
-        let errorMsg = 'Invalid verification code. Please check the code and try again.';
-        if (firebaseErr.code === 'auth/invalid-verification-code') {
-          errorMsg = '⚠️ Invalid OTP code entered. Please try again.';
-        } else if (firebaseErr.code === 'auth/code-expired') {
-          errorMsg = '⚠️ Verification code has expired. Please click "Resend OTP".';
-        } else if (firebaseErr.code === 'auth/too-many-requests') {
-          errorMsg = '⚠️ Too many attempts. Please try again later.';
-        }
-        if (this.digitsVerifyError) {
-          this.digitsVerifyError.textContent = errorMsg;
-          this.digitsVerifyError.classList.remove('hidden');
-        }
-        cells.forEach(c => c.value = '');
-        cells[0]?.focus();
-        this.showToast(errorMsg, 'error');
-        return;
-      }
-
-      if (!userCredential || !userCredential.user) {
-        throw new Error('Firebase authentication failed. No user credential returned.');
-      }
-
-      const fbUser = userCredential.user;
-      const idToken = await fbUser.getIdToken();
+      // Direct Firebase Email/Password Sign-In
+      const { idToken } = await window.firebaseEmailAuthService.signInWithEmail(email, password);
       if (!idToken) {
-        throw new Error('Unable to retrieve verified Firebase ID token.');
+        throw new Error('Firebase sign-in did not return an authenticated ID token.');
       }
 
-      if (this.pendingMobileOtp.timerId) {
-        clearInterval(this.pendingMobileOtp.timerId);
+      // Synchronize with Supabase backend
+      const syncRes = await apiRequest('/api/auth/firebase-email', {
+        method: 'POST',
+        body: JSON.stringify({ idToken: idToken })
+      });
+
+      if (!syncRes || !syncRes.success) {
+        throw new Error(syncRes?.error || 'Backend synchronization failed. Could not verify customer session.');
       }
 
-      // Backend Cryptographic Verification & Supabase Synchronization
-      // Backend validates the Firebase ID token with Firebase Admin SDK and extracts phone & UID
-      const syncRes = await apiRequest('/api/auth/firebase-phone', {
+      this.handleSuccessfulCustomerAuth(syncRes.user, syncRes.sessionToken);
+    } catch (err) {
+      console.warn('[Firebase Email Sign-In Error]', err);
+      let msg = err.message || 'Failed to sign in. Please check your credentials.';
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        msg = '⚠️ Incorrect email or password. Please try again.';
+      } else if (err.code === 'auth/too-many-requests') {
+        msg = '⚠️ Too many unsuccessful attempts. Please reset your password or try again later.';
+      } else if (err.code === 'auth/invalid-email') {
+        msg = '⚠️ Invalid email address format.';
+      }
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+      }
+      this.showToast(msg, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Sign In</span> <i class='bx bx-arrow-to-right'></i>`;
+      }
+    }
+  }
+
+  async handleEmailSignUpSubmit() {
+    const nameInput = document.getElementById('signup-name-input');
+    const emailInput = document.getElementById('signup-email-input');
+    const pwdInput = document.getElementById('signup-password-input');
+    const phoneInput = document.getElementById('signup-phone-input');
+    const errEl = document.getElementById('email-signup-error');
+    const btn = document.getElementById('btn-email-signup');
+
+    const name = nameInput ? nameInput.value.trim() : '';
+    const email = emailInput ? emailInput.value.trim() : '';
+    const password = pwdInput ? pwdInput.value : '';
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+
+    if (!name) {
+      if (errEl) {
+        errEl.textContent = '⚠️ Please enter your full name.';
+        errEl.classList.remove('hidden');
+      }
+      nameInput?.focus();
+      return;
+    }
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (errEl) {
+        errEl.textContent = '⚠️ Please enter a valid email address.';
+        errEl.classList.remove('hidden');
+      }
+      emailInput?.focus();
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      if (errEl) {
+        errEl.textContent = '⚠️ Password must be at least 6 characters long.';
+        errEl.classList.remove('hidden');
+      }
+      pwdInput?.focus();
+      return;
+    }
+
+    if (errEl) errEl.classList.add('hidden');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Creating Account...`;
+    }
+
+    try {
+      if (!window.firebaseEmailAuthService || !window.firebaseEmailAuthService.isConfigured()) {
+        throw new Error('Firebase Authentication is not configured or available.');
+      }
+
+      // Create new user in Firebase Auth
+      const { idToken } = await window.firebaseEmailAuthService.signUpWithEmail(email, password, name);
+      if (!idToken) {
+        throw new Error('Account created in Firebase but authentication session could not be established.');
+      }
+
+      // Synchronize new account with Supabase
+      const syncRes = await apiRequest('/api/auth/firebase-email', {
         method: 'POST',
         body: JSON.stringify({
-          idToken: idToken
+          idToken: idToken,
+          name: name,
+          phone: phone
         })
       });
 
       if (!syncRes || !syncRes.success) {
-        // STRICT REQUIREMENT: If synchronization fails, do NOT authenticate the user or create a fake session.
-        const errMsg = syncRes?.error || 'Backend synchronization failed. Could not establish authenticated customer session.';
-        throw new Error(errMsg);
+        throw new Error(syncRes?.error || 'Account synchronization failed. Please try signing in.');
       }
 
-      if (syncRes.isNewUser) {
-        this.pendingRegistration = {
-          verifiedToken: syncRes.token || idToken,
-          phone: syncRes.identifier || fbUser.phoneNumber
-        };
-        this.switchDigitsStep('profile');
-        this.showToast('✅ Mobile verified! Please enter your name to complete registration.', 'info');
-      } else {
-        this.handleSuccessfulCustomerAuth(syncRes.user, syncRes.sessionToken);
-      }
+      this.handleSuccessfulCustomerAuth(syncRes.user, syncRes.sessionToken);
+      this.showToast(`🎉 Welcome to Jaya Jaya Varahi Shop, ${escapeHTML(name)}! Account created.`, 'success');
     } catch (err) {
-      console.warn('[Verify Mobile OTP Error]', err);
-      const msg = err.message || 'Verification failed. Please try again.';
-      if (this.digitsVerifyError) {
-        this.digitsVerifyError.textContent = `⚠️ ${msg}`;
-        this.digitsVerifyError.classList.remove('hidden');
+      console.warn('[Firebase Email Sign-Up Error]', err);
+      let msg = err.message || 'Failed to create account. Please try again.';
+      if (err.code === 'auth/email-already-in-use') {
+        msg = '⚠️ An account with this email already exists. Please Sign In instead.';
+      } else if (err.code === 'auth/weak-password') {
+        msg = '⚠️ Password is too weak. Please use at least 6 characters with mixed letters and numbers.';
+      } else if (err.code === 'auth/invalid-email') {
+        msg = '⚠️ Invalid email address format.';
+      }
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
       }
       this.showToast(msg, 'error');
     } finally {
-      if (this.btnVerifyMobileOtp) {
-        this.btnVerifyMobileOtp.disabled = false;
-        this.btnVerifyMobileOtp.innerHTML = `<span>Verify OTP</span> <i class='bx bx-check-shield'></i>`;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Create Account & Sign In</span> <i class='bx bx-check-circle'></i>`;
+      }
+    }
+  }
+
+  async handleForgotPasswordSubmit() {
+    const emailInput = document.getElementById('forgot-email-input');
+    const errEl = document.getElementById('email-forgot-error');
+    const btn = document.getElementById('btn-send-reset-link');
+
+    const email = emailInput ? emailInput.value.trim() : '';
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (errEl) {
+        errEl.textContent = '⚠️ Please enter a valid email address to receive password reset instructions.';
+        errEl.classList.remove('hidden');
+      }
+      emailInput?.focus();
+      return;
+    }
+
+    if (errEl) errEl.classList.add('hidden');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Sending link...`;
+    }
+
+    try {
+      if (!window.firebaseEmailAuthService || !window.firebaseEmailAuthService.isConfigured()) {
+        throw new Error('Firebase Authentication is not configured or available.');
+      }
+
+      await window.firebaseEmailAuthService.sendPasswordReset(email);
+      this.showToast(`📧 Password reset link sent to ${escapeHTML(email)}! Please check your inbox.`, 'success');
+      if (errEl) {
+        errEl.textContent = `✅ Password reset email sent! Check your inbox and follow the link to reset your password.`;
+        errEl.style.color = '#15803d';
+        errEl.classList.remove('hidden');
+      }
+    } catch (err) {
+      console.warn('[Firebase Password Reset Error]', err);
+      let msg = err.message || 'Could not send password reset email. Please try again.';
+      if (err.code === 'auth/user-not-found') {
+        msg = '⚠️ No account found with this email address. Please Create an Account.';
+      } else if (err.code === 'auth/invalid-email') {
+        msg = '⚠️ Invalid email address format.';
+      }
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.style.color = '#dc2626';
+        errEl.classList.remove('hidden');
+      }
+      this.showToast(msg, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Send Password Reset Link</span> <i class='bx bx-mail-send'></i>`;
       }
     }
   }
@@ -4574,172 +4233,6 @@ class ShopApp {
     this.loadWishlistFromSupabase();
     if (this.loginModal) this.loginModal.classList.add('hidden');
     this.showToast(`🎉 Welcome back, ${escapeHTML(this.currentUser.name || 'Customer')}! Logged in successfully.`, 'success');
-  }
-
-  async handleCompleteProfile() {
-    if (!this.pendingRegistration || !this.pendingRegistration.verifiedToken) {
-      this.switchDigitsStep('phone');
-      return;
-    }
-
-    const nameInput = document.getElementById('digits-new-name');
-    const emailInput = document.getElementById('digits-new-email');
-    const name = nameInput ? nameInput.value.trim() : '';
-    const email = emailInput ? emailInput.value.trim().toLowerCase() : '';
-
-    if (!name) {
-      if (this.digitsProfileError) {
-        this.digitsProfileError.textContent = '⚠️ Please enter your full name.';
-        this.digitsProfileError.classList.remove('hidden');
-      }
-      nameInput?.focus();
-      return;
-    }
-
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      if (this.digitsProfileError) {
-        this.digitsProfileError.textContent = '⚠️ Please enter a valid email address.';
-        this.digitsProfileError.classList.remove('hidden');
-      }
-      emailInput?.focus();
-      return;
-    }
-
-    const btn = document.getElementById('btn-complete-profile');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Completing Account...`;
-    }
-
-    try {
-      const res = await apiRequest('/api/register/complete', {
-        method: 'POST',
-        body: JSON.stringify({
-          verifiedToken: this.pendingRegistration.verifiedToken,
-          phone: this.pendingRegistration.phone,
-          name: name,
-          email: email
-        })
-      });
-
-      if (res && res.success) {
-        this.currentUser = res.user;
-        try {
-          localStorage.setItem('jjv_customer_user', JSON.stringify(this.currentUser));
-          if (res.sessionToken) sessionStorage.setItem('jjv_session_token', res.sessionToken);
-        } catch(err) {
-          console.warn('[LocalStorage] Error storing customer user:', err);
-        }
-
-        this.syncUserWithSupabase(this.currentUser);
-        this.updateUserAuthUI();
-        this.loadWishlistFromSupabase();
-        if (this.loginModal) this.loginModal.classList.add('hidden');
-        this.showToast(`🎉 Welcome to Jaya Jaya Varahi Shop, ${escapeHTML(name)}! Account created.`, 'success');
-      } else {
-        const errorMsg = res?.error || 'Registration completion failed. Please try again.';
-        if (this.digitsProfileError) {
-          this.digitsProfileError.textContent = `⚠️ ${errorMsg}`;
-          this.digitsProfileError.classList.remove('hidden');
-        }
-        this.showToast(errorMsg, 'error');
-      }
-    } catch (err) {
-      const msg = err.message || 'Error completing registration.';
-      if (this.digitsProfileError) {
-        this.digitsProfileError.textContent = `⚠️ ${msg}`;
-        this.digitsProfileError.classList.remove('hidden');
-      }
-      this.showToast(msg, 'error');
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `<span>Complete Registration & Sign In</span> <i class='bx bx-check-circle'></i>`;
-      }
-    }
-  }
-
-  async handlePasswordLoginSubmit() {
-    const idInput = document.getElementById('pwd-login-identifier');
-    const pwdInput = document.getElementById('pwd-login-password');
-    const identifier = idInput ? idInput.value.trim() : '';
-    const password = pwdInput ? pwdInput.value : '';
-
-    if (!identifier || !password) {
-      if (this.digitsPasswordError) {
-        this.digitsPasswordError.textContent = '⚠️ Please enter your phone/email and password.';
-        this.digitsPasswordError.classList.remove('hidden');
-      }
-      return;
-    }
-
-    const btn = document.getElementById('btn-submit-password-login');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Verifying Credentials...`;
-    }
-
-    try {
-      const res = await apiRequest('/api/login/password', {
-        method: 'POST',
-        body: JSON.stringify({ identifier: identifier, password: password })
-      });
-
-      if (res && res.success && res.requiresOtp) {
-        const masked = res.maskedTarget || res.masked || identifier;
-        const cooldown = res.resendCooldown || 30;
-
-        if (res.requiresFirebaseOtp && res.phone) {
-          if (!window.firebasePhoneAuthService || !window.firebasePhoneAuthService.isConfigured()) {
-            throw new Error('Firebase Authentication is required for mobile OTP verification.');
-          }
-          const verifier = window.firebasePhoneAuthService.initRecaptcha('recaptcha-container');
-          const confirmationResult = await window.firebasePhoneAuthService.sendPhoneOtp(res.phone, verifier);
-          this.firebaseConfirmationResult = confirmationResult;
-        }
-
-        this.pendingMobileOtp = {
-          phone: res.phone || res.identifier,
-          masked: masked,
-          purpose: 'password_login',
-          resendCooldown: cooldown,
-          timerId: null
-        };
-
-        if (this.digitsMaskedPhone) {
-          this.digitsMaskedPhone.textContent = masked;
-        }
-
-        const cells = document.querySelectorAll('#digits-otp-grid .digits-otp-cell');
-        cells.forEach(c => c.value = '');
-
-        this.startDigitsResendTimer(cooldown);
-        this.switchDigitsStep('verify');
-        this.showToast(`🔒 Password verified! Security OTP dispatched via Firebase to ${masked}.`, 'info');
-      } else {
-        const errorMsg = res?.error || 'Invalid credentials. Please check your phone/email or password.';
-        if (this.digitsPasswordError) {
-          this.digitsPasswordError.textContent = `⚠️ ${errorMsg}`;
-          this.digitsPasswordError.classList.remove('hidden');
-        }
-        this.showToast(errorMsg, 'error');
-      }
-    } catch (err) {
-      let msg = err.message || 'Password login verification failed.';
-      if (err.code === 'auth/operation-not-allowed' || (err.message && err.message.includes('region enabled'))) {
-        msg = '⚠️ SMS region policy blocked. In Firebase Console > Authentication > Settings > SMS Regions Policy, enable India (+91), or test with a registered Firebase test phone number.';
-      }
-      if (this.digitsPasswordError) {
-        this.digitsPasswordError.textContent = `⚠️ ${msg}`;
-        this.digitsPasswordError.classList.remove('hidden');
-      }
-      this.showToast(msg, 'error');
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `<span>Verify & Send OTP</span> <i class='bx bx-arrow-to-right'></i>`;
-      }
-    }
   }
 
   // ══════════════════════════════════════════════════════════════════════

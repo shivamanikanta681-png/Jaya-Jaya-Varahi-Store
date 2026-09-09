@@ -7248,3 +7248,62 @@ body.dark-mode .digits-divider::after {
   border-bottom-color: #334155 !important;
 }
 
+/* Customer Authentication Tabs (Sign In / Create Account) */
+.auth-tabs-nav {
+  display: flex !important;
+  background: #f1f5f9 !important;
+  border-radius: 14px !important;
+  padding: 5px !important;
+  margin-bottom: 20px !important;
+  gap: 6px !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.auth-tab-btn {
+  flex: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding: 10px 14px !important;
+  border: none !important;
+  background: transparent !important;
+  color: #64748b !important;
+  font-weight: 700 !important;
+  font-size: 13.5px !important;
+  border-radius: 10px !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.auth-tab-btn:hover {
+  color: #1e293b !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
+.auth-tab-btn.active {
+  background: #ffffff !important;
+  color: #b45309 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+body.dark-mode .auth-tabs-nav {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+}
+
+body.dark-mode .auth-tab-btn {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode .auth-tab-btn:hover {
+  color: #f8fafc !important;
+}
+
+body.dark-mode .auth-tab-btn.active {
+  background: #1e293b !important;
+  color: #f59e0b !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+

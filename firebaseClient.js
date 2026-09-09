@@ -193,7 +193,71 @@ const firebasePhoneAuthService = {
 
 window.firebasePhoneAuthService = firebasePhoneAuthService;
 
+// ── FIREBASE EMAIL & PASSWORD AUTHENTICATION SERVICE (100% Free, Zero SMS) ──
+const firebaseEmailAuthService = {
+  isConfigured() {
+    return isFirebaseConfigured() && typeof firebase !== 'undefined' && typeof firebase.auth === 'function';
+  },
+
+  getAuth() {
+    if (auth) return auth;
+    if (typeof firebase !== 'undefined' && typeof firebase.auth === 'function') {
+      auth = firebase.auth();
+      return auth;
+    }
+    return null;
+  },
+
+  async signUpWithEmail(email, password, displayName = '') {
+    const authInstance = this.getAuth();
+    if (!authInstance) throw new Error('Firebase Authentication is not available.');
+    const userCredential = await authInstance.createUserWithEmailAndPassword(email.trim(), password);
+    if (displayName && userCredential.user && typeof userCredential.user.updateProfile === 'function') {
+      try {
+        await userCredential.user.updateProfile({ displayName: displayName.trim() });
+      } catch (_e) {
+        // profile update non-fatal
+      }
+    }
+    const idToken = await userCredential.user.getIdToken();
+    return { user: userCredential.user, idToken };
+  },
+
+  async signInWithEmail(email, password) {
+    const authInstance = this.getAuth();
+    if (!authInstance) throw new Error('Firebase Authentication is not available.');
+    const userCredential = await authInstance.signInWithEmailAndPassword(email.trim(), password);
+    const idToken = await userCredential.user.getIdToken();
+    return { user: userCredential.user, idToken };
+  },
+
+  async sendPasswordReset(email) {
+    const authInstance = this.getAuth();
+    if (!authInstance) throw new Error('Firebase Authentication is not available.');
+    await authInstance.sendPasswordResetEmail(email.trim());
+    return true;
+  },
+
+  async getCurrentUserToken() {
+    const authInstance = this.getAuth();
+    if (authInstance && authInstance.currentUser) {
+      return await authInstance.currentUser.getIdToken();
+    }
+    return null;
+  },
+
+  async signOut() {
+    const authInstance = this.getAuth();
+    if (authInstance && typeof authInstance.signOut === 'function') {
+      return await authInstance.signOut();
+    }
+  }
+};
+
+window.firebaseEmailAuthService = firebaseEmailAuthService;
+
 // Also export if running in Node / bundler environment
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { app, db, auth, analytics, firebaseProductService, firebasePhoneAuthService, firebaseConfig };
+  module.exports = { app, db, auth, analytics, firebaseProductService, firebasePhoneAuthService, firebaseEmailAuthService, firebaseConfig };
 }
+

@@ -440,43 +440,40 @@ class TestSmsOtpAuthentication(unittest.TestCase):
         self.assertNotIn('const token = "sb_"', js_content)
         self.assertNotIn("handleDirectSupabasePhoneSync", js_content)
 
-    # ── TEST 26: No /api/send-otp fallback from Firebase mobile flow ──
-    def test_26_no_send_otp_fallback_in_mobile_flow(self):
+    # ── TEST 26: Firebase Email Sign-In authentication in frontend ──
+    def test_26_firebase_email_signin_authentication(self):
         js_path = PROJECT_ROOT / "SignUp_LogIn_Form.js"
         with open(js_path, "r", encoding="utf-8") as f:
             js_content = f.read()
 
-        # Extract handleSendMobileOtp body
-        start_idx = js_content.find("async handleSendMobileOtp()")
-        end_idx = js_content.find("startDigitsResendTimer(", start_idx)
+        # Extract handleEmailSignInSubmit body
+        start_idx = js_content.find("async handleEmailSignInSubmit()")
+        end_idx = js_content.find("async handleEmailSignUpSubmit()", start_idx)
         self.assertGreater(start_idx, 0)
         self.assertGreater(end_idx, start_idx)
-        send_code = js_content[start_idx:end_idx]
+        signin_code = js_content[start_idx:end_idx]
 
-        self.assertNotIn("/api/send-otp", send_code, "handleSendMobileOtp must NOT fallback to /api/send-otp")
+        self.assertIn("firebaseEmailAuthService.signInWithEmail", signin_code)
+        self.assertIn("/api/auth/firebase-email", signin_code)
+        self.assertNotIn("/api/send-otp", signin_code)
+        self.assertNotIn("/api/verify-otp", signin_code)
 
-        # Extract handleResendMobileOtp body
-        resend_start = js_content.find("async handleResendMobileOtp()")
-        resend_end = js_content.find("async handleVerifyMobileOtp()", resend_start)
-        self.assertGreater(resend_start, 0)
-        self.assertGreater(resend_end, resend_start)
-        resend_code = js_content[resend_start:resend_end]
-
-        self.assertNotIn("/api/send-otp", resend_code, "handleResendMobileOtp must NOT fallback to /api/send-otp")
-
-    # ── TEST 27: No /api/verify-otp fallback from Firebase mobile flow ──
-    def test_27_no_verify_otp_fallback_in_mobile_flow(self):
+    # ── TEST 27: Firebase Email Registration authentication in frontend ──
+    def test_27_firebase_email_signup_authentication(self):
         js_path = PROJECT_ROOT / "SignUp_LogIn_Form.js"
         with open(js_path, "r", encoding="utf-8") as f:
             js_content = f.read()
 
-        start_idx = js_content.find("async handleVerifyMobileOtp()")
-        end_idx = js_content.find("handleSuccessfulCustomerAuth(", start_idx)
+        start_idx = js_content.find("async handleEmailSignUpSubmit()")
+        end_idx = js_content.find("async handleForgotPasswordSubmit()", start_idx)
         self.assertGreater(start_idx, 0)
         self.assertGreater(end_idx, start_idx)
-        verify_code = js_content[start_idx:end_idx]
+        signup_code = js_content[start_idx:end_idx]
 
-        self.assertNotIn("/api/verify-otp", verify_code, "handleVerifyMobileOtp must NOT fallback to /api/verify-otp")
+        self.assertIn("firebaseEmailAuthService.signUpWithEmail", signup_code)
+        self.assertIn("/api/auth/firebase-email", signup_code)
+        self.assertNotIn("/api/send-otp", signup_code)
+        self.assertNotIn("/api/verify-otp", signup_code)
 
     # ── TEST 28: localStorage cannot create authentication ──
     def test_28_localstorage_cannot_create_authentication(self):
@@ -584,6 +581,27 @@ class TestSmsOtpAuthentication(unittest.TestCase):
         rewrites = v_conf.get("rewrites", [])
         has_api_rewrite = any(r.get("source") == "/api/(.*)" and "api/index.py" in r.get("destination", "") for r in rewrites)
         self.assertTrue(has_api_rewrite, "vercel.json must rewrite /api/(.*) to api/index.py")
+
+    # ── TEST 35: Firebase Email & Password backend authentication endpoint ──
+    def test_35_firebase_email_auth_endpoint(self):
+        # 1. Valid token authentication
+        token = "test_token_valid_user123@example.com_fb_email_user_123"
+        valid, decoded, err = verify_firebase_id_token(token)
+        self.assertTrue(valid)
+        self.assertEqual(decoded["email"], "user123@example.com")
+        self.assertEqual(decoded["uid"], "fb_email_user_123")
+
+        # 2. Supabase sync for Email Account
+        synced, _, user_row = sync_user_to_supabase(
+            identifier="user123@example.com",
+            name="Test User",
+            platform="Email Account",
+            email="user123@example.com",
+            firebase_uid=decoded["uid"]
+        )
+        self.assertTrue(synced)
+        self.assertEqual(user_row["email"], "user123@example.com")
+        self.assertEqual(user_row["firebase_uid"], "fb_email_user_123")
 
 
 if __name__ == "__main__":
