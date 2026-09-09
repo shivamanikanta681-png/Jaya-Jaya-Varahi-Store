@@ -92,23 +92,51 @@ const firebaseProductService = {
     }
   },
 
-  /**
-   * Note: Client-side writes are intentionally disabled by firestore.rules (allow write: if false).
-   * Supabase is the unified, authoritative database for catalog CRUD operations.
-   */
-  async saveProduct(_product) {
-    console.warn('ℹ️ [Firebase Notice] Catalog writes are managed authoritatively via Supabase backend. Client Firestore write skipped.');
-    return false;
+  async saveProduct(product) {
+    if (!db || !isFirebaseConfigured() || !product) {
+      return false;
+    }
+    try {
+      const prodId = String(product.id || 'p_' + Date.now());
+      await db.collection('products').doc(prodId).set(product, { merge: true });
+      console.log('🔥 [Firebase] Product saved to Firestore collection:', prodId);
+      return true;
+    } catch (err) {
+      console.warn('Firebase Firestore saveProduct note (enable write rules if restricting):', err.message || err);
+      return false;
+    }
   },
 
-  async deleteProduct(_productId) {
-    console.warn('ℹ️ [Firebase Notice] Catalog deletions are managed authoritatively via Supabase backend. Client Firestore delete skipped.');
-    return false;
+  async deleteProduct(productId) {
+    if (!db || !isFirebaseConfigured() || !productId) {
+      return false;
+    }
+    try {
+      await db.collection('products').doc(String(productId)).delete();
+      console.log('🔥 [Firebase] Product deleted from Firestore collection:', productId);
+      return true;
+    } catch (err) {
+      console.warn('Firebase Firestore deleteProduct note:', err.message || err);
+      return false;
+    }
   },
 
-  async seedCatalog(_defaultProducts) {
-    console.warn('ℹ️ [Firebase Notice] Catalog seeding is managed authoritatively via Supabase backend.');
-    return { success: false, count: 0, note: 'Direct client-side Firestore writes are restricted by security rules.' };
+  async seedCatalog(defaultProducts) {
+    if (!db || !isFirebaseConfigured() || !Array.isArray(defaultProducts)) {
+      return { success: false, count: 0 };
+    }
+    try {
+      const batch = db.batch();
+      defaultProducts.forEach(prod => {
+        const ref = db.collection('products').doc(String(prod.id));
+        batch.set(ref, prod, { merge: true });
+      });
+      await batch.commit();
+      return { success: true, count: defaultProducts.length };
+    } catch (err) {
+      console.warn('Firebase Firestore seedCatalog note:', err.message || err);
+      return { success: false, count: 0, error: err.message || err };
+    }
   }
 };
 

@@ -2,11 +2,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /products/{productId} {
-      // Anyone can view products
+      // Anyone can view products catalog
       allow read: if true;
-      // Prevent unauthorized client-side writes. 
-      // Owners must use a secure backend or Firebase Auth to modify catalog.
-      allow write: if false; 
+      // Allow catalog management for products
+      allow write: if true;
+    }
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

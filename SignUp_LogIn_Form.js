@@ -2388,16 +2388,29 @@ class ShopApp {
   }
 
   async loadProductsCatalog() {
+    // Preserve any custom products created locally (id starting with 'p_')
+    const existingLocal = safeJSON('jjv_products', []);
+    const customLocalProducts = Array.isArray(existingLocal)
+      ? existingLocal.filter(p => p && p.id && !p.builtin && String(p.id).startsWith('p_'))
+      : [];
+
     // 1. Primary Source of Truth: Supabase PostgreSQL
     if (window.supabaseDataService) {
       try {
         const data = await window.supabaseDataService.getProducts();
         if (data && data.length > 0) {
-          this.products = data;
+          const remoteIds = new Set(data.map(p => String(p.id)));
+          const merged = [...data];
+          customLocalProducts.forEach(localP => {
+            if (!remoteIds.has(String(localP.id))) {
+              merged.unshift(localP);
+            }
+          });
+          this.products = merged;
           localStorage.setItem('jjv_products', JSON.stringify(this.products));
           this.renderProducts();
           this.renderOwnerInventory();
-          console.log(`✅ [Supabase] Loaded ${data.length} products from Supabase catalog!`);
+          console.log(`✅ [Supabase] Loaded ${data.length} products (total ${merged.length} active)!`);
           return;
         }
       } catch (err) {
@@ -2410,11 +2423,18 @@ class ShopApp {
       try {
         const fbData = await window.firebaseProductService.getProducts();
         if (fbData && fbData.length > 0) {
-          this.products = fbData;
+          const remoteIds = new Set(fbData.map(p => String(p.id)));
+          const merged = [...fbData];
+          customLocalProducts.forEach(localP => {
+            if (!remoteIds.has(String(localP.id))) {
+              merged.unshift(localP);
+            }
+          });
+          this.products = merged;
           localStorage.setItem('jjv_products', JSON.stringify(this.products));
           this.renderProducts();
           this.renderOwnerInventory();
-          console.log(`🔥 [Firebase] Loaded ${fbData.length} products from Cloud Firestore!`);
+          console.log(`🔥 [Firebase] Loaded ${fbData.length} products (total ${merged.length} active)!`);
           return;
         }
       } catch (err) {
@@ -2599,6 +2619,11 @@ class ShopApp {
         window.supabaseDataService.deleteProduct(productId).catch(() => {});
       }
 
+      // Sync to Firebase Firestore if configured
+      if (window.firebaseProductService && typeof window.firebaseProductService.deleteProduct === 'function') {
+        window.firebaseProductService.deleteProduct(productId).catch(() => {});
+      }
+
       this.saveProducts();
       this.saveCart();
       localStorage.setItem('jjv_wishlist', JSON.stringify(this.wishlist));
@@ -2658,6 +2683,15 @@ class ShopApp {
           await window.supabaseDataService.saveProduct(productRecord);
         } catch (sbErr) {
           console.warn('[Supabase] Note saving product:', sbErr.message || sbErr);
+        }
+      }
+
+      // Sync to Firebase Firestore if configured
+      if (window.firebaseProductService && typeof window.firebaseProductService.saveProduct === 'function') {
+        try {
+          await window.firebaseProductService.saveProduct(productRecord);
+        } catch (fbErr) {
+          console.warn('[Firebase] Note saving product to Firestore:', fbErr.message || fbErr);
         }
       }
 
