@@ -756,8 +756,21 @@ class ShopApp {
       const backBtn = e.target.closest('.back-to-catalog-action');
       if (backBtn) {
         e.preventDefault();
-        this.showCatalogSection(true);
+        const isFromDetail = Boolean(backBtn.closest('#product-detail-section'));
+        this.showCatalogSection(isFromDetail);
         return;
+      }
+    });
+
+    // Global Home navigation on brand logo or title click
+    const brandElements = [document.querySelector('.brand-title-container'), document.querySelector('.logo')];
+    brandElements.forEach(el => {
+      if (el) {
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', (e) => {
+          if (e.target.closest('#navbar-menu-toggle-btn')) return;
+          this.showCatalogSection(false);
+        });
       }
     });
 
@@ -1138,7 +1151,6 @@ class ShopApp {
     if (this.navBtns) {
       this.navBtns.forEach(b => b.classList.remove('active'));
     }
-    this.currentCategory = 'cart';
     this.renderCart();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -1427,8 +1439,17 @@ class ShopApp {
     const query = this.searchInput ? this.searchInput.value.toLowerCase().trim() : '';
     let filtered = this.products;
 
+    if (!this.currentCategory || this.currentCategory === 'cart' || this.currentCategory === 'null' || this.currentCategory === 'undefined') {
+      this.currentCategory = 'all';
+    }
+
     if (this.currentCategory !== 'all') {
-      filtered = filtered.filter(p => p.category === this.currentCategory);
+      const isKnownCategory = Array.isArray(this.categories) && this.categories.some(c => c.id === this.currentCategory && c.id !== 'all');
+      if (isKnownCategory) {
+        filtered = filtered.filter(p => p.category === this.currentCategory);
+      } else {
+        this.currentCategory = 'all';
+      }
     }
 
     if (query) {
@@ -1560,6 +1581,28 @@ class ShopApp {
     if (this.cartSection) this.cartSection.classList.add('hidden');
     if (this.wishlistSection) this.wishlistSection.classList.add('hidden');
     if (this.catalogSection) this.catalogSection.classList.remove('hidden');
+
+    // Always reset to 'all' so that all products display
+    this.currentCategory = 'all';
+
+    // Highlight 'All Products' category button
+    if (this.navBtns) {
+      this.navBtns.forEach(b => {
+        if (b.dataset.category === 'all') {
+          b.classList.add('active');
+        } else {
+          b.classList.remove('active');
+        }
+      });
+    }
+
+    if (typeof this.updateSectionTitle === 'function') {
+      this.updateSectionTitle();
+    }
+
+    if (this.searchInput) {
+      this.searchInput.value = '';
+    }
 
     document.querySelectorAll('.product-card').forEach(c => {
       c.classList.remove('flipping');
@@ -2131,7 +2174,7 @@ class ShopApp {
     if (shipBtn) shipBtn.classList.remove('go');
 
     // Directly return to home page
-    this.showCatalogSection(true);
+    this.showCatalogSection(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     // Show order success message
