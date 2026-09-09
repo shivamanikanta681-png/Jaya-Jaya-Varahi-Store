@@ -574,7 +574,7 @@
                             <p class="digits-sub">Enter your email and password to access your account.</p>
                         </div>
 
-                        <form id="email-signin-form" onsubmit="event.preventDefault(); window.shopApp?.handleEmailSignInSubmit();">
+                        <form id="email-signin-form" method="POST" action="javascript:void(0);" onsubmit="event.preventDefault(); window.shopApp?.handleEmailSignInSubmit(event);">
                             <div class="digits-form-group">
                                 <label for="email-signin-input" class="digits-label">Email Address</label>
                                 <div class="digits-input-wrapper">
@@ -656,7 +656,7 @@
                             <p class="digits-sub">Sign up for order tracking, express delivery & member discounts.</p>
                         </div>
 
-                        <form id="email-signup-form" onsubmit="event.preventDefault(); window.shopApp?.handleEmailSignUpSubmit();">
+                        <form id="email-signup-form" method="POST" action="javascript:void(0);" onsubmit="event.preventDefault(); window.shopApp?.handleEmailSignUpSubmit(event);">
                             <div class="digits-form-group">
                                 <label for="signup-name-input" class="digits-label">Full Name *</label>
                                 <div class="digits-input-wrapper">
@@ -710,7 +710,7 @@
                             <p class="digits-sub">Enter your email address. Firebase will send you a secure password reset link.</p>
                         </div>
 
-                        <form id="email-forgot-form" onsubmit="event.preventDefault(); window.shopApp?.handleForgotPasswordSubmit();">
+                        <form id="email-forgot-form" method="POST" action="javascript:void(0);" onsubmit="event.preventDefault(); window.shopApp?.handleForgotPasswordSubmit(event);">
                             <div class="digits-form-group">
                                 <label for="forgot-email-input" class="digits-label">Email Address</label>
                                 <div class="digits-input-wrapper">

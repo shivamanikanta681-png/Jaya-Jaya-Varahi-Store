@@ -4294,6 +4294,11 @@ class ShopApp {
   }
 
   async handleEmailSignInSubmit() {
+    const e = arguments[0];
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const emailInput = document.getElementById('email-signin-input');
     const pwdInput = document.getElementById('password-signin-input');
     const errEl = document.getElementById('email-signin-error');
@@ -4328,10 +4333,29 @@ class ShopApp {
       }
 
       // Synchronize with Supabase backend
-      const syncRes = await apiRequest('/api/auth/firebase-email', {
-        method: 'POST',
-        body: JSON.stringify({ idToken: idToken })
-      });
+      let syncRes;
+      try {
+        syncRes = await apiRequest('/api/auth/firebase-email', {
+          method: 'POST',
+          body: JSON.stringify({ idToken: idToken })
+        });
+      } catch (apiErr) {
+        console.warn('[Firebase Auth Backend API note]', apiErr.message || apiErr);
+        if (window.supabaseDataService) {
+          const directUser = await window.supabaseDataService.syncUser({
+            email: email,
+            platform: 'Email Account'
+          });
+          syncRes = {
+            success: true,
+            isNewUser: false,
+            user: directUser || { email: email, name: email.split('@')[0] },
+            sessionToken: idToken
+          };
+        } else {
+          throw apiErr;
+        }
+      }
 
       if (!syncRes || !syncRes.success) {
         throw new Error(syncRes?.error || 'Backend synchronization failed. Could not verify customer session.');
@@ -4362,6 +4386,11 @@ class ShopApp {
   }
 
   async handleEmailSignUpSubmit() {
+    const e = arguments[0];
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const nameInput = document.getElementById('signup-name-input');
     const emailInput = document.getElementById('signup-email-input');
     const pwdInput = document.getElementById('signup-password-input');
@@ -4419,14 +4448,35 @@ class ShopApp {
       }
 
       // Synchronize new account with Supabase
-      const syncRes = await apiRequest('/api/auth/firebase-email', {
-        method: 'POST',
-        body: JSON.stringify({
-          idToken: idToken,
-          name: name,
-          phone: phone
-        })
-      });
+      let syncRes;
+      try {
+        syncRes = await apiRequest('/api/auth/firebase-email', {
+          method: 'POST',
+          body: JSON.stringify({
+            idToken: idToken,
+            name: name,
+            phone: phone
+          })
+        });
+      } catch (apiErr) {
+        console.warn('[Firebase Auth Backend API note]', apiErr.message || apiErr);
+        if (window.supabaseDataService) {
+          const directUser = await window.supabaseDataService.syncUser({
+            name: name,
+            email: email,
+            phone: phone,
+            platform: 'Email Account'
+          });
+          syncRes = {
+            success: true,
+            isNewUser: true,
+            user: directUser || { name: name, email: email, phone: phone },
+            sessionToken: idToken
+          };
+        } else {
+          throw apiErr;
+        }
+      }
 
       if (!syncRes || !syncRes.success) {
         throw new Error(syncRes?.error || 'Account synchronization failed. Please try signing in.');
@@ -4458,6 +4508,11 @@ class ShopApp {
   }
 
   async handleForgotPasswordSubmit() {
+    const e = arguments[0];
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const emailInput = document.getElementById('forgot-email-input');
     const errEl = document.getElementById('email-forgot-error');
     const btn = document.getElementById('btn-send-reset-link');

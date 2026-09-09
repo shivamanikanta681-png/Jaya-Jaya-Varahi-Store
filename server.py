@@ -865,12 +865,19 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
         """
         Resolves canonical API route path, compatible with:
         1. Local standalone server (self.path is direct, e.g. /api/auth/firebase-phone)
-        2. Vercel Serverless Function rewrites with ?path= query param
-        3. Vercel X-Matched-Path / X-Invoke-Path edge network headers
+        2. Vercel Serverless Function rewrites
+        3. Vercel X-Matched-Path / X-Invoke-Path / X-Forwarded-Uri / X-Original-Uri headers
         """
-        matched = self.headers.get("x-matched-path") or self.headers.get("x-invoke-path")
+        matched = (
+            self.headers.get("x-matched-path")
+            or self.headers.get("x-invoke-path")
+            or self.headers.get("x-forwarded-uri")
+            or self.headers.get("x-original-uri")
+        )
         if matched and matched.startswith("/api/"):
-            return matched.split("?")[0]
+            clean_m = matched.split("?")[0]
+            if not clean_m.startswith("/api/index.py") and clean_m != "/api/index":
+                return clean_m
 
         parsed = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qs(parsed.query)
@@ -879,7 +886,23 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             if p.startswith("/api/"):
                 return p.split("?")[0]
 
-        return self.path.split("?")[0]
+        clean_path = self.path.split("?")[0]
+        if clean_path.startswith("/api/") and not clean_path.startswith("/api/index"):
+            return clean_path
+
+        matches_hdr = self.headers.get("x-now-route-matches")
+        if matches_hdr:
+            for part in matches_hdr.split("&"):
+                if "=" in part:
+                    _, v = part.split("=", 1)
+                    decoded_val = urllib.parse.unquote(v)
+                    if not decoded_val.startswith("/"):
+                        decoded_val = "/" + decoded_val
+                    if decoded_val.startswith("/api/"):
+                        return decoded_val
+                    return "/api" + decoded_val
+
+        return clean_path
 
     def end_headers(self):
         if hasattr(self, 'path') and any(self.path.split('?')[0].endswith(ext) for ext in ('.html', '.js', '.css', '.webp')):
@@ -961,10 +984,23 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             }).encode("utf-8"))
             return
 
+        # ── API METHOD ENFORCEMENT (Reject GET on POST-only API endpoints) ──
+        if req_path.startswith("/api/"):
+            self._set_cors_headers(405)
+            self.wfile.write(json.dumps({
+                "success": False,
+                "error": f"HTTP 405 Method Not Allowed: '{req_path}' requires a POST request.",
+                "allowedMethods": ["POST", "OPTIONS"]
+            }).encode("utf-8"))
+            return
+
         return super().do_GET()
 
     def do_POST(self):
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0) or 0)
+        except (ValueError, TypeError):
+            content_length = 0
         post_body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
 
         try:
@@ -975,6 +1011,21 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         req_path = self.get_request_path()
+
+        # ── RESILIENT VERCEL REWRITE PATH INFERENCE ──
+        if req_path in ("/api", "/api/", "/api/index", "/api/index.py"):
+            if "idToken" in payload or "token" in payload:
+                req_path = "/api/auth/firebase-email"
+            elif "order" in payload or "items" in payload:
+                req_path = "/api/orders"
+            elif "message" in payload:
+                req_path = "/api/chat/rag"
+            elif "password" in payload and ADMIN_PASSWORD and payload.get("password") == ADMIN_PASSWORD:
+                req_path = "/api/admin/login"
+            elif "settings" in payload or "discounts" in payload:
+                req_path = "/api/admin/settings"
+            elif "phone" in payload and ("purpose" in payload or "otp" in payload):
+                req_path = "/api/send-otp" if "purpose" in payload else "/api/verify-otp"
 
         # ── ROUTE 1: ADMIN LOGIN ──
         if req_path == "/api/admin/login":
