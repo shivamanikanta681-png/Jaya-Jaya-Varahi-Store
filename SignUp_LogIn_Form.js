@@ -866,7 +866,10 @@ class ShopApp {
     if (this.ownerAuthForm) {
       this.ownerAuthForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const enteredPass = this.ownerPasswordInput ? this.ownerPasswordInput.value.trim() : '';
+        let enteredPass = this.ownerPasswordInput ? this.ownerPasswordInput.value.trim() : '';
+        if ((enteredPass.startsWith('"') && enteredPass.endsWith('"')) || (enteredPass.startsWith("'") && enteredPass.endsWith("'"))) {
+          enteredPass = enteredPass.slice(1, -1).trim();
+        }
         if (!enteredPass) return;
 
         const authBtn = this.ownerAuthForm.querySelector('button[type="submit"]');
