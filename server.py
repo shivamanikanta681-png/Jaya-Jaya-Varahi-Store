@@ -67,10 +67,13 @@ PORT = int(os.environ.get("PORT", ENV.get("PORT", 8000)))
 ALLOWED_ORIGIN_CONFIG = os.environ.get("ALLOWED_ORIGIN", ENV.get("ALLOWED_ORIGIN", "")).strip()
 ALLOWED_ORIGINS = [o.strip() for o in ALLOWED_ORIGIN_CONFIG.split(",") if o.strip() and o.strip() != "*"]
 if not ALLOWED_ORIGINS:
-    if APP_ENV == "production":
-        ALLOWED_ORIGINS = ["https://jaya-jaya-varahi-shop.web.app", "https://jayajayavarahi.com"]
-    else:
-        ALLOWED_ORIGINS = ["http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:3000", "http://localhost:5173"]
+    ALLOWED_ORIGINS = [
+        "https://jaya-jaya-varahi-store.vercel.app",
+        "https://jaya-jaya-varahi-shop.web.app",
+        "https://jayajayavarahi.com",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000"
+    ]
 
 def get_cors_origin(req_origin: Optional[str]) -> str:
     if not req_origin:
@@ -79,7 +82,7 @@ def get_cors_origin(req_origin: Optional[str]) -> str:
     for allowed in ALLOWED_ORIGINS:
         if clean_origin == allowed.rstrip("/"):
             return clean_origin
-    if APP_ENV != "production" and ("localhost" in clean_origin or "127.0.0.1" in clean_origin):
+    if "vercel.app" in clean_origin or "localhost" in clean_origin or "127.0.0.1" in clean_origin:
         return clean_origin
     return ALLOWED_ORIGINS[0]
 
@@ -906,11 +909,11 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
         qs = urllib.parse.parse_qs(parsed.query)
         if "path" in qs and qs["path"]:
             p = qs["path"][0]
-            if p.startswith("/api/"):
+            if p.startswith("/api"):
                 return p.split("?")[0]
 
         clean_path = self.path.split("?")[0]
-        if clean_path.startswith("/api/") and not clean_path.startswith("/api/index"):
+        if clean_path.startswith("/api") and not clean_path.startswith("/api/index"):
             return clean_path
 
         matches_hdr = self.headers.get("x-now-route-matches")
@@ -982,7 +985,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
         req_path = self.get_request_path()
 
         # ── HEALTH CHECK ENDPOINT ──
-        if req_path == "/api/health":
+        if req_path in ("/api", "/api/", "/api/health"):
             self._set_cors_headers(200)
             health_status = {
                 "success": True,
@@ -1008,7 +1011,7 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # ── API METHOD ENFORCEMENT (Reject GET on POST-only API endpoints) ──
-        if req_path.startswith("/api/"):
+        if req_path.startswith("/api"):
             self._set_cors_headers(405)
             self.wfile.write(json.dumps({
                 "success": False,
