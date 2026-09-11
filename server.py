@@ -402,8 +402,8 @@ def validate_admin_product(product: Dict[str, Any]) -> Tuple[bool, Dict[str, Any
         return False, {}, "Price must be a valid numeric value"
 
     image = str(product.get("image", "images/logo.png")).strip()
-    if len(image) > 500:
-        return False, {}, "Image path/URL exceeds 500 characters"
+    if len(image) > 1_500_000:
+        return False, {}, "Image data exceeds maximum allowed size (1.5MB)"
 
     description = str(product.get("description", "")).strip()
     if len(description) > 2000:
@@ -413,11 +413,51 @@ def validate_admin_product(product: Dict[str, Any]) -> Tuple[bool, Dict[str, Any
         "id": prod_id,
         "name": name,
         "category": category,
-        "price": round(price, 2),
+        "price": price,
         "image": image,
         "description": description
     }
+    if "discount" in product and product["discount"] is not None:
+        try:
+            clean_product["discount"] = max(0.0, min(100.0, float(product["discount"])))
+        except (ValueError, TypeError):
+            pass
+
     return True, clean_product, ""
+
+
+def sync_product_to_firestore(product_dict: Dict[str, Any], is_delete: bool = False) -> bool:
+    """Syncs admin product changes directly to Firebase Firestore via REST API."""
+    try:
+        import urllib.request
+        import json
+        prod_id = str(product_dict.get("id") or "").strip()
+        if not prod_id:
+            return False
+        api_key = os.environ.get("FIREBASE_API_KEY", "AIzaSyDIUrfr7J1WWtppp3EsXviBkGiI3y7Vx54")
+        project_id = os.environ.get("FIREBASE_PROJECT_ID", "jaya-jaya-varahi-shop")
+        url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/products/{prod_id}?key={api_key}"
+        if is_delete:
+            req = urllib.request.Request(url, method="DELETE")
+        else:
+            fields = {}
+            for k, v in product_dict.items():
+                if v is None:
+                    continue
+                if isinstance(v, (int, float)):
+                    fields[k] = {"doubleValue": float(v)}
+                elif isinstance(v, bool):
+                    fields[k] = {"booleanValue": v}
+                else:
+                    fields[k] = {"stringValue": str(v)}
+            body = json.dumps({"fields": fields}).encode("utf-8")
+            req = urllib.request.Request(url, data=body, method="PATCH", headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            print(f"🔥 [Firebase Server Sync] Synced product {prod_id} to Firestore")
+            return True
+    except Exception as e:
+        print(f"[Firebase Server Sync Note]: {e}")
+        return False
 
 def is_rate_limited(key: str, max_requests: int = 3, window_seconds: int = 600, cooldown_seconds: int = 60) -> Tuple[bool, str]:
     """Checks per-key sliding window rate limit and cooldown."""
@@ -1211,6 +1251,9 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception as e:
                     print(f"[Admin Products Note] Supabase delete: {e}")
 
+                # Sync deletion directly to Firebase Firestore
+                sync_product_to_firestore({"id": prod_id}, is_delete=True)
+
                 self._set_cors_headers(200)
                 self.wfile.write(json.dumps({"success": True, "message": f"Product {prod_id} deleted successfully"}).encode("utf-8"))
                 return
@@ -1226,6 +1269,9 @@ class ShopRequestHandler(http.server.SimpleHTTPRequestHandler):
                     client.table("products").upsert(clean_prod).execute()
                 except Exception as e:
                     print(f"[Admin Products Note] Supabase upsert: {e}")
+
+                # Sync upsert directly to Firebase Firestore
+                sync_product_to_firestore(clean_prod, is_delete=False)
 
                 self._set_cors_headers(200)
                 self.wfile.write(json.dumps({"success": True, "message": "Product saved successfully", "product": clean_prod}).encode("utf-8"))

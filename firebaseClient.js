@@ -65,78 +65,198 @@ try {
 }
 
 // ── EXCLUSIVE FIREBASE PRODUCT SERVICE ──
+// Helper to parse Firestore REST API document format
+function parseFirestoreDoc(doc) {
+  if (!doc || !doc.fields) return null;
+  const id = doc.name ? doc.name.split('/').pop() : '';
+  const obj = { id };
+  for (const [key, valObj] of Object.entries(doc.fields)) {
+    if ('stringValue' in valObj) obj[key] = valObj.stringValue;
+    else if ('integerValue' in valObj) obj[key] = parseInt(valObj.integerValue, 10);
+    else if ('doubleValue' in valObj) obj[key] = parseFloat(valObj.doubleValue);
+    else if ('booleanValue' in valObj) obj[key] = valObj.booleanValue;
+    else if ('mapValue' in valObj) obj[key] = valObj.mapValue;
+    else if ('arrayValue' in valObj) obj[key] = (valObj.arrayValue.values || []).map(v => Object.values(v)[0]);
+  }
+  return obj;
+}
+
+// Helper to convert plain JS object to Firestore REST API format
+function toFirestoreDocBody(product) {
+  const fields = {};
+  for (const [key, val] of Object.entries(product)) {
+    if (val === undefined || val === null) continue;
+    if (typeof val === 'number') {
+      if (Number.isInteger(val)) fields[key] = { integerValue: String(val) };
+      else fields[key] = { doubleValue: val };
+    } else if (typeof val === 'boolean') {
+      fields[key] = { booleanValue: val };
+    } else {
+      fields[key] = { stringValue: String(val) };
+    }
+  }
+  return { fields };
+}
+
+// ── EXCLUSIVE FIREBASE PRODUCT SERVICE ──
 const firebaseProductService = {
   isConfigured: isFirebaseConfigured,
 
   /**
-   * Fetches all products from Cloud Firestore 'products' collection
+   * Fetches all products directly from Cloud Firestore 'products' collection.
+   * Uses Firebase SDK when available with seamless REST API fallback.
    * @returns {Promise<Array|null>} List of products or null if not configured / error
    */
   async getProducts() {
-    if (!db || !isFirebaseConfigured()) {
+    if (!isFirebaseConfigured()) {
       return null;
     }
-    try {
-      const snapshot = await db.collection('products').get();
-      if (snapshot.empty) {
-        return [];
+
+    // 1. Try official Firebase SDK if available
+    if (db && typeof db.collection === 'function') {
+      try {
+        const snapshot = await db.collection('products').get();
+        if (!snapshot.empty) {
+          const products = [];
+          snapshot.forEach(doc => {
+            products.push({ id: doc.id, ...doc.data() });
+          });
+          console.log(`🔥 [Firebase SDK] Successfully fetched ${products.length} products from Firestore!`);
+          return products;
+        }
+      } catch (sdkErr) {
+        console.warn('Firebase SDK getProducts note, trying REST API fallback:', sdkErr.message || sdkErr);
       }
-      const products = [];
-      snapshot.forEach(doc => {
-        products.push({ id: doc.id, ...doc.data() });
-      });
-      return products;
-    } catch (err) {
-      console.warn('Firebase Firestore getProducts note:', err);
-      return null;
     }
+
+    // 2. Direct REST API fallback
+    try {
+      const restUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/products?key=${firebaseConfig.apiKey}`;
+      const response = await fetch(restUrl);
+      if (response.ok) {
+        const json = await response.json();
+        const docs = json.documents || [];
+        const products = docs.map(parseFirestoreDoc).filter(Boolean);
+        console.log(`🔥 [Firebase REST] Successfully fetched ${products.length} products from Firestore!`);
+        return products;
+      }
+    } catch (restErr) {
+      console.warn('Firebase REST getProducts fallback note:', restErr.message || restErr);
+    }
+
+    return null;
   },
 
+  /**
+   * Saves or updates a product document in Cloud Firestore 'products' collection.
+   * Uses Firebase SDK with seamless REST API fallback.
+   */
   async saveProduct(product) {
-    if (!db || !isFirebaseConfigured() || !product) {
+    if (!isFirebaseConfigured() || !product) {
       return false;
     }
+
+    const prodId = String(product.id || 'p_' + Date.now());
+    const cleanProduct = {
+      ...product,
+      id: prodId,
+      updated_at: new Date().toISOString()
+    };
+
+    // 1. Try Firebase SDK
+    if (db && typeof db.collection === 'function') {
+      try {
+        await db.collection('products').doc(prodId).set(cleanProduct, { merge: true });
+        console.log('🔥 [Firebase SDK] Product saved to Firestore collection:', prodId);
+        return true;
+      } catch (sdkErr) {
+        console.warn('Firebase SDK saveProduct note, attempting REST API fallback:', sdkErr.message || sdkErr);
+      }
+    }
+
+    // 2. Direct REST API fallback
     try {
-      const prodId = String(product.id || 'p_' + Date.now());
-      await db.collection('products').doc(prodId).set(product, { merge: true });
-      console.log('🔥 [Firebase] Product saved to Firestore collection:', prodId);
-      return true;
-    } catch (err) {
-      console.warn('Firebase Firestore saveProduct note (enable write rules if restricting):', err.message || err);
-      return false;
+      const restUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/products/${encodeURIComponent(prodId)}?key=${firebaseConfig.apiKey}`;
+      const docPayload = toFirestoreDocBody(cleanProduct);
+      const response = await fetch(restUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(docPayload)
+      });
+      if (response.ok) {
+        console.log('🔥 [Firebase REST] Product successfully saved to Firestore collection:', prodId);
+        return true;
+      } else {
+        const errData = await response.text();
+        console.warn('Firebase REST saveProduct response note:', errData);
+      }
+    } catch (restErr) {
+      console.warn('Firebase REST saveProduct fallback note:', restErr.message || restErr);
     }
+
+    return false;
   },
 
+  /**
+   * Deletes a product document from Cloud Firestore 'products' collection.
+   */
   async deleteProduct(productId) {
-    if (!db || !isFirebaseConfigured() || !productId) {
+    if (!isFirebaseConfigured() || !productId) {
       return false;
     }
+
+    const prodId = String(productId);
+
+    // 1. Try Firebase SDK
+    if (db && typeof db.collection === 'function') {
+      try {
+        await db.collection('products').doc(prodId).delete();
+        console.log('🔥 [Firebase SDK] Product deleted from Firestore collection:', prodId);
+        return true;
+      } catch (sdkErr) {
+        console.warn('Firebase SDK deleteProduct note, attempting REST API fallback:', sdkErr.message || sdkErr);
+      }
+    }
+
+    // 2. Direct REST API fallback
     try {
-      await db.collection('products').doc(String(productId)).delete();
-      console.log('🔥 [Firebase] Product deleted from Firestore collection:', productId);
-      return true;
-    } catch (err) {
-      console.warn('Firebase Firestore deleteProduct note:', err.message || err);
-      return false;
+      const restUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/products/${encodeURIComponent(prodId)}?key=${firebaseConfig.apiKey}`;
+      const response = await fetch(restUrl, { method: 'DELETE' });
+      if (response.ok) {
+        console.log('🔥 [Firebase REST] Product deleted from Firestore collection:', prodId);
+        return true;
+      }
+    } catch (restErr) {
+      console.warn('Firebase REST deleteProduct fallback note:', restErr.message || restErr);
     }
+
+    return false;
   },
 
   async seedCatalog(defaultProducts) {
-    if (!db || !isFirebaseConfigured() || !Array.isArray(defaultProducts)) {
+    if (!isFirebaseConfigured() || !Array.isArray(defaultProducts)) {
       return { success: false, count: 0 };
     }
-    try {
-      const batch = db.batch();
-      defaultProducts.forEach(prod => {
-        const ref = db.collection('products').doc(String(prod.id));
-        batch.set(ref, prod, { merge: true });
-      });
-      await batch.commit();
-      return { success: true, count: defaultProducts.length };
-    } catch (err) {
-      console.warn('Firebase Firestore seedCatalog note:', err.message || err);
-      return { success: false, count: 0, error: err.message || err };
+    if (db && typeof db.batch === 'function') {
+      try {
+        const batch = db.batch();
+        defaultProducts.forEach(prod => {
+          const ref = db.collection('products').doc(String(prod.id));
+          batch.set(ref, prod, { merge: true });
+        });
+        await batch.commit();
+        return { success: true, count: defaultProducts.length };
+      } catch (err) {
+        console.warn('Firebase Firestore seedCatalog note:', err.message || err);
+      }
     }
+    // Fallback: save items individually
+    let saved = 0;
+    for (const p of defaultProducts) {
+      const ok = await this.saveProduct(p);
+      if (ok) saved++;
+    }
+    return { success: saved > 0, count: saved };
   }
 };
 

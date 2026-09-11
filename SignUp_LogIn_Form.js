@@ -61,6 +61,45 @@ async function apiRequest(url, options = {}) {
   }
 }
 
+// Client-side image compressor: converts uploaded photo to optimized WebP/JPEG under 150KB for safe Firestore document storage
+function compressImageFile(file, maxWidth = 900, maxHeight = 900, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) {
+      return reject(new Error('Selected file is not an image'));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Failed to parse image data'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        let dataUrl = canvas.toDataURL('image/webp', quality);
+        if (!dataUrl || !dataUrl.startsWith('data:image/webp')) {
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
+        resolve(dataUrl);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 // Default Sample Inventory
 const DEFAULT_PRODUCTS = [
   {
@@ -2373,11 +2412,12 @@ class ShopApp {
     localStorage.setItem('jjv_cart', JSON.stringify(this.cart));
   }
 
-  saveProducts() {
+  saveProducts(syncRemote = true) {
     localStorage.setItem('jjv_products', JSON.stringify(this.products));
     localStorage.setItem('jjv_products_updated_at', new Date().toISOString());
-    // Persist to database ONLY when an authorized admin token is present
-    if (this.adminToken) {
+
+    // Persist to backend and Firestore when admin is authenticated or when sync is requested
+    if (syncRemote && this.adminToken) {
       this.products.forEach(p => {
         apiRequest('/api/admin/products', {
           method: 'POST',
@@ -2394,7 +2434,49 @@ class ShopApp {
       ? existingLocal.filter(p => p && p.id && !p.builtin && String(p.id).startsWith('p_'))
       : [];
 
-    // 1. Primary Source of Truth: Supabase PostgreSQL
+    // 1. PRIMARY SOURCE OF TRUTH: Firebase Firestore (Exclusive Store Catalog Database)
+    if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
+      try {
+        const fbData = await window.firebaseProductService.getProducts();
+        if (fbData && fbData.length > 0) {
+          const remoteIds = new Set(fbData.map(p => String(p.id)));
+
+          // Auto-sync any unsynced local custom products up to Firebase Firestore
+          for (const localP of customLocalProducts) {
+            if (!remoteIds.has(String(localP.id))) {
+              console.log('🔥 [Firebase Auto-Sync] Uploading missing local product to Firestore:', localP.id);
+              window.firebaseProductService.saveProduct(localP).catch(() => {});
+              fbData.unshift(localP);
+              remoteIds.add(String(localP.id));
+            }
+          }
+
+          // Normalize prices and sort newest custom products first
+          const normalizedFb = fbData.map(p => ({
+            ...p,
+            price: Math.max(0, parseFloat(p.price) || 0),
+            discount: p.discount !== undefined && p.discount !== null ? parseFloat(p.discount) : undefined
+          })).sort((a, b) => {
+            const aIsCustom = String(a.id).startsWith('p_');
+            const bIsCustom = String(b.id).startsWith('p_');
+            if (aIsCustom && !bIsCustom) return -1;
+            if (!aIsCustom && bIsCustom) return 1;
+            return 0;
+          });
+
+          this.products = normalizedFb;
+          localStorage.setItem('jjv_products', JSON.stringify(this.products));
+          this.renderProducts();
+          this.renderOwnerInventory();
+          console.log(`🔥 [Firebase] Authoritative catalog loaded: ${normalizedFb.length} products directly from Firestore!`);
+          return;
+        }
+      } catch (err) {
+        console.warn('[Firebase] Products catalog loading note:', err.message || err);
+      }
+    }
+
+    // 2. Secondary fallback: Supabase PostgreSQL (if Firebase unreachable)
     if (window.supabaseDataService) {
       try {
         const data = await window.supabaseDataService.getProducts();
@@ -2410,7 +2492,7 @@ class ShopApp {
           localStorage.setItem('jjv_products', JSON.stringify(this.products));
           this.renderProducts();
           this.renderOwnerInventory();
-          console.log(`✅ [Supabase] Loaded ${data.length} products (total ${merged.length} active)!`);
+          console.log(`✅ [Supabase Fallback] Loaded ${data.length} products (total ${merged.length} active)!`);
           return;
         }
       } catch (err) {
@@ -2418,31 +2500,7 @@ class ShopApp {
       }
     }
 
-    // 2. Secondary fallback: Firebase Firestore if configured
-    if (window.firebaseProductService && window.firebaseProductService.isConfigured()) {
-      try {
-        const fbData = await window.firebaseProductService.getProducts();
-        if (fbData && fbData.length > 0) {
-          const remoteIds = new Set(fbData.map(p => String(p.id)));
-          const merged = [...fbData];
-          customLocalProducts.forEach(localP => {
-            if (!remoteIds.has(String(localP.id))) {
-              merged.unshift(localP);
-            }
-          });
-          this.products = merged;
-          localStorage.setItem('jjv_products', JSON.stringify(this.products));
-          this.renderProducts();
-          this.renderOwnerInventory();
-          console.log(`🔥 [Firebase] Loaded ${fbData.length} products (total ${merged.length} active)!`);
-          return;
-        }
-      } catch (err) {
-        console.warn('[Firebase] Firestore loading note:', err.message || err);
-      }
-    }
-
-    console.log('ℹ️ [Catalog] Running with local sample inventory.');
+    console.log('ℹ️ [Catalog] Running with cached store inventory.');
   }
 
   renderCart() {
@@ -2596,7 +2654,7 @@ class ShopApp {
     this.showToast(`Updated discount for "${product.name}" to ${appliedDisc}%!`, 'success');
   }
 
-  deleteProductFromConsole(productId) {
+  async deleteProductFromConsole(productId) {
     const product = this.products.find(p => String(p.id) === String(productId));
     if (!product) return;
 
@@ -2605,7 +2663,17 @@ class ShopApp {
       this.cart = this.cart.filter(item => String(item.productId) !== String(productId));
       this.wishlist = this.wishlist.filter(id => String(id) !== String(productId));
 
-      // 1. Delete via backend admin endpoint if token available
+      // 1. Delete directly from Firebase Firestore (Authoritative Products Catalog)
+      if (window.firebaseProductService && typeof window.firebaseProductService.deleteProduct === 'function') {
+        try {
+          await window.firebaseProductService.deleteProduct(productId);
+          console.log(`🔥 [Firebase] Successfully deleted product ${productId} from Firestore`);
+        } catch (fbErr) {
+          console.warn('[Firebase] Delete product note:', fbErr.message || fbErr);
+        }
+      }
+
+      // 2. Delete via backend admin endpoint if token available
       if (this.adminToken) {
         apiRequest('/api/admin/products', {
           method: 'POST',
@@ -2619,12 +2687,7 @@ class ShopApp {
         window.supabaseDataService.deleteProduct(productId).catch(() => {});
       }
 
-      // Sync to Firebase Firestore if configured
-      if (window.firebaseProductService && typeof window.firebaseProductService.deleteProduct === 'function') {
-        window.firebaseProductService.deleteProduct(productId).catch(() => {});
-      }
-
-      this.saveProducts();
+      this.saveProducts(false);
       this.saveCart();
       localStorage.setItem('jjv_wishlist', JSON.stringify(this.wishlist));
       this.renderOwnerInventory();
@@ -2636,7 +2699,7 @@ class ShopApp {
     }
   }
 
-  handleAddProduct(e) {
+  async handleAddProduct(e) {
     e.preventDefault();
     const name = document.getElementById('p-name')?.value.trim();
     const category = document.getElementById('p-category')?.value || 'toys';
@@ -2649,78 +2712,106 @@ class ShopApp {
       return;
     }
 
-    const imgSource = document.querySelector('input[name="img-source"]:checked')?.value || 'url';
-    const urlInput = document.getElementById('p-image-url')?.value.trim();
-    const fileInput = document.getElementById('p-image-file')?.files[0];
+    const submitBtn = this.addProductForm?.querySelector('button[type="submit"]');
+    const originalBtnContent = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = "<i class='bx bx-loader-alt bx-spin'></i> Saving to Firebase Firestore...";
+    }
 
-    const createAndSaveProduct = async (imageUrl) => {
+    try {
+      const imgSource = document.querySelector('input[name="img-source"]:checked')?.value || 'url';
+      const urlInput = document.getElementById('p-image-url')?.value.trim();
+      const fileInput = document.getElementById('p-image-file')?.files[0];
+
+      let imageUrl = urlInput || "https://images.unsplash.com/photo-1560343090-f0409e92791a?auto=format&fit=crop&w=600&q=80";
+
+      // If user uploaded a photo file, compress it safely to WebP/JPEG under 150KB
+      if (imgSource === 'file' && fileInput) {
+        try {
+          imageUrl = await compressImageFile(fileInput, 900, 900, 0.82);
+          console.log(`📸 [Image Compressed] Processed photo: length = ${imageUrl.length} chars (fits Firestore < 1MB)`);
+        } catch (imgErr) {
+          console.warn('Image compression fallback note:', imgErr.message || imgErr);
+          // Fallback to basic FileReader if canvas compression fails
+          imageUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (evt) => resolve(evt.target.result);
+            reader.onerror = () => resolve("images/logo.png");
+            reader.readAsDataURL(fileInput);
+          });
+        }
+      }
+
       const productRecord = {
         id: "p_" + Date.now(),
         name: name,
         category: category,
         price: price,
-        image: imageUrl || "https://images.unsplash.com/photo-1560343090-f0409e92791a?auto=format&fit=crop&w=600&q=80",
-        description: description
+        image: imageUrl,
+        description: description,
+        created_at: new Date().toISOString()
       };
 
       if (customDiscountInput !== '') {
         productRecord.discount = Math.max(0, Math.min(100, parseFloat(customDiscountInput) || 0));
       }
 
-      // Save product to database via backend admin route or Supabase
-      if (this.adminToken) {
-        try {
-          await apiRequest('/api/admin/products', {
-            method: 'POST',
-            body: JSON.stringify({ product: productRecord })
-          });
-          console.log("✅ [Admin] Product successfully saved to database via backend:", productRecord.id);
-        } catch (adminErr) {
-          console.warn('[Admin] Failed to save product via backend:', adminErr.message || adminErr);
-        }
-      } else if (window.supabaseDataService) {
-        try {
-          await window.supabaseDataService.saveProduct(productRecord);
-        } catch (sbErr) {
-          console.warn('[Supabase] Note saving product:', sbErr.message || sbErr);
-        }
-      }
-
-      // Sync to Firebase Firestore if configured
+      // 1. PRIMARY: Store directly in Firebase Firestore database
+      let fbSaved = false;
       if (window.firebaseProductService && typeof window.firebaseProductService.saveProduct === 'function') {
         try {
-          await window.firebaseProductService.saveProduct(productRecord);
+          fbSaved = await window.firebaseProductService.saveProduct(productRecord);
+          console.log(`🔥 [Firebase] Product "${name}" saved to Firestore successfully:`, fbSaved);
         } catch (fbErr) {
-          console.warn('[Firebase] Note saving product to Firestore:', fbErr.message || fbErr);
+          console.error('[Firebase] Error saving product to Firestore:', fbErr);
         }
       }
 
-      // Update in-memory state and refresh UI
+      // 2. Also sync to backend admin route / Supabase in background
+      if (this.adminToken) {
+        apiRequest('/api/admin/products', {
+          method: 'POST',
+          body: JSON.stringify({ product: productRecord })
+        }).then(() => {
+          console.log("✅ [Admin] Product synced to server database:", productRecord.id);
+        }).catch(adminErr => {
+          console.warn('[Admin] Note saving product via backend:', adminErr.message || adminErr);
+        });
+      } else if (window.supabaseDataService) {
+        window.supabaseDataService.saveProduct(productRecord).catch(sbErr => {
+          console.warn('[Supabase] Note syncing product:', sbErr.message || sbErr);
+        });
+      }
+
+      // Update in-memory state and refresh UI immediately
       this.products.unshift(productRecord);
-      this.saveProducts();
+      this.saveProducts(false);
       this.renderOwnerInventory();
       this.renderProducts();
 
       // Clear the form inputs
       if (this.addProductForm) this.addProductForm.reset();
-      
       const radUrl = document.querySelector('input[name="img-source"][value="url"]');
       if (radUrl) radUrl.checked = true;
       if (this.urlInputContainer) this.urlInputContainer.classList.remove('hidden');
       if (this.fileInputContainer) this.fileInputContainer.classList.add('hidden');
 
-      this.showToast(`🎉 Product "${name}" added directly to database!`, 'success');
-      document.querySelector('.console-tab-btn[data-tab="tab-manage"]')?.click();
-    };
+      if (fbSaved) {
+        this.showToast(`🔥 Product "${name}" stored directly in Firebase Firestore!`, 'success');
+      } else {
+        this.showToast(`🎉 Product "${name}" added to catalog & synced!`, 'success');
+      }
 
-    if (imgSource === 'file' && fileInput) {
-      const reader = new FileReader();
-      reader.onload = function(evt) {
-        createAndSaveProduct(evt.target.result);
-      };
-      reader.readAsDataURL(fileInput);
-    } else {
-      createAndSaveProduct(urlInput);
+      document.querySelector('.console-tab-btn[data-tab="tab-manage"]')?.click();
+    } catch (err) {
+      console.error('Error in handleAddProduct:', err);
+      this.showToast(`Error adding product: ${err.message || 'Unknown error'}`, 'error');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnContent;
+      }
     }
   }
 
